@@ -1,0 +1,644 @@
+import { useEffect, useState } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ArrowLeft, CheckCircle, Clock, User, Calendar, Users } from "lucide-react";
+import BookingModal from "@/components/BookingModal";
+import CancelModal from "@/components/CancelModal";
+import { completeBooking } from '@/services/bookingService';
+import { addBookingToCustomBackend } from '@/services/bookingsApi';
+import { useAuth } from '@/hooks/useAuth';
+
+const Booking = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+  const [prebookData, setPrebookData] = useState<any>(null);
+  const [hotelDetails, setHotelDetails] = useState<any>(null);
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [isBookingInProgress, setIsBookingInProgress] = useState(false);
+  const [bookingConfirmation, setBookingConfirmation] = useState<any>(null);
+
+  useEffect(() => {
+    if (location.state?.prebookData) {
+      setPrebookData(location.state.prebookData);
+    }
+    if (location.state?.hotelDetails) {
+      setHotelDetails(location.state.hotelDetails);
+    }
+    
+    // Clean up old guest details if they don't match current booking reference
+    const cleanupOldGuestDetails = () => {
+      const savedGuestDetails = localStorage.getItem('guest_details');
+      const currentBookingRefId = localStorage.getItem('booking_reference_id');
+      
+      if (savedGuestDetails && currentBookingRefId) {
+        try {
+          const guestDetails = JSON.parse(savedGuestDetails);
+          const savedBookingRefId = guestDetails.bookingData?.bookingReference?.booking_reference_id;
+          
+          if (savedBookingRefId !== currentBookingRefId) {
+            console.log('🧹 Cleaning up mismatched guest details on page load');
+            localStorage.removeItem('guest_details');
+          }
+        } catch (error) {
+          console.log('🧹 Cleaning up invalid guest details on page load');
+          localStorage.removeItem('guest_details');
+        }
+      }
+    };
+    
+    cleanupOldGuestDetails();
+  }, [location.state]);
+
+  const handleBookNow = async () => {
+    console.log('🎯 Book Now button clicked!');
+    
+    // Check if guest details are saved in localStorage
+    const savedGuestDetails = localStorage.getItem('guest_details');
+    const currentBookingRefId = localStorage.getItem('booking_reference_id');
+    
+    if (!savedGuestDetails) {
+      // No guest details saved, show the booking modal to collect them
+      console.log('ℹ️ No guest details found, showing booking modal');
+      setShowBookingModal(true);
+      return;
+    }
+    
+    // Guest details are saved, check if they match the current booking reference
+    try {
+      const guestDetails = JSON.parse(savedGuestDetails);
+      const savedBookingRefId = guestDetails.bookingData?.bookingReference?.booking_reference_id;
+      
+      console.log('🔍 Comparing booking references:');
+      console.log('  - Current:', currentBookingRefId);
+      console.log('  - Saved:', savedBookingRefId);
+      
+      // If booking references don't match, clear old details and show modal
+      if (savedBookingRefId !== currentBookingRefId) {
+        console.log('⚠️ Booking reference mismatch! Clearing old guest details and showing modal');
+        localStorage.removeItem('guest_details');
+        setShowBookingModal(true);
+        return;
+      }
+      
+      console.log('✅ Guest details found and booking reference matches');
+      
+      // Clear guest details immediately after reading (use only once)
+      localStorage.removeItem('guest_details');
+      console.log('🗑️ Guest details removed from localStorage (will be used once)');
+      
+      setIsBookingInProgress(true);
+      
+      // Extract data from saved guest details
+      const { bookingForm, roomGuests, bookingData, rooms, guests, selectedRoom: savedRoom } = guestDetails;
+      
+      // Use saved room or fallback to prebookData room
+      const roomData = savedRoom || prebookData?.HotelResult?.Rooms;
+      const bookingCode = roomData?.BookingCode;
+      
+      if (!bookingCode) {
+        throw new Error('No booking code available. Please select a room first.');
+      }
+      
+      const totalFare = parseFloat(roomData?.TotalFare || roomData?.Price || 0);
+      
+      if (totalFare <= 0) {
+        throw new Error('Invalid room price. Please select a valid room.');
+      }
+      
+      console.log('📦 Booking with data:', {
+        bookingCode,
+        bookingReferenceId: bookingData.bookingReference.booking_reference_id,
+        totalFare,
+        bookingForm,
+        customerData: bookingData.customerData
+      });
+
+      // Call booking API
+      const result = await completeBooking(
+        bookingCode,
+        bookingData.bookingReference.booking_reference_id,
+        bookingData.customerData,
+        bookingForm,
+        totalFare,
+        rooms,
+        guests,
+        roomGuests
+      );
+
+      if (result.success) {
+        const confirmationData = {
+          confirmationNumber: result.confirmationNumber || 'N/A',
+          bookingId: result.data?.BookingId || 'N/A',
+          clientReferenceId: result.data?.ClientReferenceId || 'N/A',
+          bookingReferenceId: bookingData.bookingReference.booking_reference_id,
+          timestamp: new Date().toISOString()
+        };
+        
+        setBookingConfirmation(confirmationData);
+        
+        // Clear used booking reference (will be regenerated on next Reserve click)
+        localStorage.removeItem('booking_reference_id');
+        console.log('♻️ Cleared booking reference ID - new one will be generated on next Reserve click');
+        
+        // Save to localStorage for later retrieval (for cancellation)
+        const bookingHistory = JSON.parse(localStorage.getItem('booking_history') || '[]');
+        bookingHistory.push({
+          ...confirmationData,
+          hotelName: hotelDetails?.HotelName || 'Unknown Hotel',
+          roomName: roomData?.Name || 'Unknown Room',
+          totalAmount: totalFare,
+          customerEmail: bookingForm.email,
+          customerName: `${bookingForm.firstName} ${bookingForm.lastName}`
+        });
+        localStorage.setItem('booking_history', JSON.stringify(bookingHistory));
+        
+        console.log('🎉 ======= BOOKING CONFIRMED =======');
+        console.log('📋 Confirmation Number:', confirmationData.confirmationNumber);
+        console.log('🆔 Booking ID:', confirmationData.bookingId);
+        console.log('🔖 Booking Reference ID:', confirmationData.bookingReferenceId);
+        console.log('===================================');
+        
+        // Add booking details to custom backend
+        try {
+          console.log('📝 Storing booking details in custom backend...');
+          await addBookingToCustomBackend({
+            booking_reference_id: confirmationData.bookingReferenceId,
+            confirmation_number: confirmationData.confirmationNumber,
+            client_reference_id: confirmationData.clientReferenceId,
+            customer_id: user?.customer_id || '',
+            agency_name: 'TravelPro',
+            hotel_code: hotelDetails?.HotelCode || '',
+            check_in: location.state?.checkIn || new Date().toISOString().split('T')[0],
+            check_out: location.state?.checkOut || new Date().toISOString().split('T')[0],
+            booking_date: new Date().toISOString(),
+            status: 'Confirmed',
+            voucher_status: true,
+            total_fare: totalFare,
+            currency: prebookData.HotelResult?.Currency || 'USD',
+            no_of_rooms: rooms,
+            invoice_number: `INV${Date.now()}`
+          });
+          console.log('✅ Booking details stored in custom backend successfully');
+        } catch (backendError) {
+          console.error('⚠️ Failed to store booking in custom backend (non-critical):', backendError);
+        }
+        
+        // Show success alert
+        alert(`✅ Booking confirmed!\n\nConfirmation Number: ${confirmationData.confirmationNumber}\nBooking ID: ${confirmationData.bookingId}\n\n⚠️ IMPORTANT: Save these numbers for cancellation and verification!`);
+        
+      } else {
+        // Booking failed - generate new booking reference for retry
+        console.error('❌ Booking failed:', result);
+        
+        // Generate new booking reference ID for retry
+        if (user?.customer_id) {
+          try {
+            console.log('🔍 Generating new booking reference for retry...');
+            const { generateBookingReference } = await import('@/services/authApi');
+            const newBookingRef = await generateBookingReference(user.customer_id);
+            localStorage.setItem('booking_reference_id', newBookingRef.booking_reference_id);
+            console.log('✅ New booking reference generated for retry:', newBookingRef.booking_reference_id);
+          } catch (error) {
+            console.error('⚠️ Failed to generate new booking reference:', error);
+          }
+        }
+        
+        // Clean up the error message to remove duplicates
+        let errorMessage = result.message || 'Booking failed. Please try again.';
+        // Remove "Booking failed: " prefix if it exists
+        errorMessage = errorMessage.replace(/^Booking failed:\s*/i, '');
+        // Remove "Failed. " prefix if it exists
+        errorMessage = errorMessage.replace(/^Failed\.\s*/i, '');
+        
+        alert(`❌ Booking failed: ${errorMessage}`);
+        setIsBookingInProgress(false);
+      }
+    } catch (error) {
+      console.error('💥 Booking error:', error);
+      
+      // If error is due to invalid guest details or parsing, clear them
+      if (error instanceof SyntaxError) {
+        console.log('⚠️ Invalid guest details format, clearing...');
+        localStorage.removeItem('guest_details');
+      }
+      
+      // Generate new booking reference ID for retry after error
+      if (user?.customer_id) {
+        try {
+          console.log('🔍 Generating new booking reference after error...');
+          const { generateBookingReference } = await import('@/services/authApi');
+          const newBookingRef = await generateBookingReference(user.customer_id);
+          localStorage.setItem('booking_reference_id', newBookingRef.booking_reference_id);
+          console.log('✅ New booking reference generated after error:', newBookingRef.booking_reference_id);
+        } catch (refError) {
+          console.error('⚠️ Failed to generate new booking reference:', refError);
+        }
+      }
+      
+      // Clean up the error message
+      let errorMessage = error instanceof Error ? error.message : 'Booking failed. Please try again.';
+      errorMessage = errorMessage.replace(/^Booking failed:\s*/i, '');
+      errorMessage = errorMessage.replace(/^Failed\.\s*/i, '');
+      
+      alert(`❌ Booking failed: ${errorMessage}`);
+      setIsBookingInProgress(false);
+    }
+  };
+
+  // Debug cancellation policies
+  console.log('🔍 Prebooking Data:', prebookData);
+  console.log('🔍 HotelResult:', prebookData?.HotelResult);
+  console.log('🔍 Rooms:', prebookData?.HotelResult?.Rooms);
+  console.log('🔍 CancelPolicies path 1:', prebookData?.HotelResult?.Rooms?.CancelPolicies);
+  console.log('🔍 CancelPolicies path 2:', prebookData?.HotelResult?.CancelPolicies);
+  console.log('🔍 CancelPolicies path 3:', prebookData?.CancelPolicies);
+
+  if (!prebookData) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="text-center">
+              <p className="text-muted-foreground">No prebooking data found</p>
+              <Button onClick={() => navigate(-1)} className="mt-4">
+                Go Back
+              </Button>
+            </div>
+          </div>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Header />
+      
+      <main className="container mx-auto px-4 py-8 mt-24">
+        {/* Back Button */}
+        <Button
+          variant="ghost"
+          onClick={() => navigate(-1)}
+          className="mb-6 flex items-center gap-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Hotel Details
+        </Button>
+
+        {/* Warning Message */}
+        <Alert className="mb-6 border-orange-200 bg-orange-50">
+          <Clock className="h-4 w-4 text-orange-600" />
+          <AlertDescription className="text-orange-800">
+            ⚠️ <strong>Important:</strong> The booking would be cancelled after 24 hours if payment is not completed.
+          </AlertDescription>
+        </Alert>
+
+        {/* Top Row - 3 Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6 items-start">
+          {/* Left Column - Cancellation Policies & Amenities */}
+          <div className="lg:col-span-2 flex flex-col gap-6">
+            {/* Cancellation Policies Card */}
+            {(() => {
+              // Try multiple paths to find cancellation policies
+              let rawCancelPolicies = 
+                prebookData.HotelResult?.Rooms?.CancelPolicies || 
+                prebookData.HotelResult?.CancelPolicies ||
+                prebookData?.CancelPolicies;
+              
+              console.log('🔍 Found CancelPolicies:', rawCancelPolicies);
+              console.log('🔍 Is Array?', Array.isArray(rawCancelPolicies));
+              console.log('🔍 Type:', typeof rawCancelPolicies);
+              
+              if (!rawCancelPolicies) {
+                console.log('❌ No cancellation policies found in any path');
+                return null;
+              }
+              
+              // Convert single object to array
+              let cancelPolicies: any[];
+              if (Array.isArray(rawCancelPolicies)) {
+                cancelPolicies = rawCancelPolicies;
+                console.log('✅ CancelPolicies is already an array');
+              } else if (typeof rawCancelPolicies === 'object') {
+                cancelPolicies = [rawCancelPolicies];
+                console.log('✅ Converted single CancelPolicies object to array');
+              } else {
+                console.log('❌ CancelPolicies is not an array or object:', typeof rawCancelPolicies);
+                return null;
+              }
+              
+              if (cancelPolicies.length === 0) {
+                console.log('❌ CancelPolicies array is empty');
+                return null;
+              }
+              
+              console.log('✅ Displaying', cancelPolicies.length, 'cancellation policies');
+              
+              return (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <span className="text-base sm:text-lg">Cancellation Policies</span>
+                    <span className="text-xs sm:text-sm font-normal text-muted-foreground">
+                      {cancelPolicies.length} {cancelPolicies.length === 1 ? 'Policy' : 'Policies'}
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {(() => {
+                    console.log('🏨 Total Cancellation Policies:', cancelPolicies.length);
+                    console.log('📋 All Policies:', JSON.stringify(cancelPolicies, null, 2));
+                    return null;
+                  })()}
+                  
+                  <div className="space-y-4">
+                    {cancelPolicies.map((policy: any, index: number) => {
+                      console.log(`🔍 Policy #${index + 1}:`, JSON.stringify(policy, null, 2));
+                      
+                      // Format date properly
+                      const formatDate = (dateStr: string) => {
+                        try {
+                          const date = new Date(dateStr);
+                          return date.toLocaleDateString('en-US', { 
+                            year: 'numeric', 
+                            month: 'short', 
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          });
+                        } catch (e) {
+                          return dateStr;
+                        }
+                      };
+                      
+                      // Get all keys from policy object to display everything
+                      const policyKeys = Object.keys(policy);
+                      console.log(`📋 Policy #${index + 1} keys:`, policyKeys);
+                      
+                      const totalFields = Object.keys(policy).length;
+                      const nonEmptyFields = Object.entries(policy).filter(([_, value]) => 
+                        value !== null && value !== undefined && value !== ''
+                      ).length;
+                      
+                      return (
+                        <div 
+                          key={index} 
+                          className="relative p-3 sm:p-5 bg-gradient-to-br from-white via-gray-50 to-gray-100 rounded-xl border-2 border-gray-200 shadow-sm hover:shadow-lg transition-all duration-200"
+                        >
+                          {/* Policy Number Badge */}
+                          <div className="absolute -top-2 sm:-top-3 -left-2 sm:-left-3 bg-primary text-white font-bold text-xs sm:text-sm px-2 sm:px-3 py-1 rounded-full shadow-md">
+                            Policy #{index + 1}
+                          </div>
+                          
+                          {/* Field Count Badge */}
+                          <div className="mb-3 text-xs text-gray-600 bg-blue-50 px-2 py-1 rounded-md inline-block">
+                            📋 {nonEmptyFields} field{nonEmptyFields !== 1 ? 's' : ''} available
+                          </div>
+                          
+                          <div className="mt-2 space-y-2 sm:space-y-3">
+                            {/* Display ALL fields from policy object */}
+                            {Object.entries(policy).map(([key, value]) => {
+                              // Format the key for display
+                              const formattedKey = key
+                                .replace(/([A-Z])/g, ' $1')
+                                .replace(/^./, (str) => str.toUpperCase())
+                                .trim();
+                              
+                              // Check if value is empty
+                              const isEmpty = value === null || value === undefined || value === '';
+                              
+                              if (isEmpty) {
+                                console.log(`⚠️ Empty field: ${key}`);
+                              }
+                              
+                              // Format the value
+                              let formattedValue: any = value;
+                              if (isEmpty) {
+                                formattedValue = '—'; // Show dash for empty values
+                              } else if (key.toLowerCase().includes('date')) {
+                                formattedValue = formatDate(value as string);
+                              } else if (typeof value === 'object') {
+                                formattedValue = JSON.stringify(value, null, 2);
+                              } else {
+                                formattedValue = String(value);
+                              }
+                              
+                              // Determine if value should be highlighted (charges, fees)
+                              const isCharge = !isEmpty && (
+                                key.toLowerCase().includes('charge') || 
+                                key.toLowerCase().includes('fee') ||
+                                key.toLowerCase().includes('penalty') ||
+                                key.toLowerCase().includes('amount')
+                              );
+                              
+                              console.log(`${isEmpty ? '⚠️' : '✅'} ${isEmpty ? 'Empty' : 'Displaying'} field: ${key} = ${formattedValue}`);
+                              
+                              return (
+                                <div key={key} className={`flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3 py-2 border-b border-gray-200 last:border-0 ${isEmpty ? 'opacity-50' : ''}`}>
+                                  <span className="font-semibold text-gray-700 text-xs sm:text-sm sm:min-w-[140px]">
+                                    {formattedKey}:
+                                  </span>
+                                  <span className={`text-xs sm:text-sm break-words ${isCharge ? "text-red-600 font-bold sm:text-base" : isEmpty ? "text-gray-500 italic" : "text-gray-900 font-medium"}`}>
+                                    {formattedValue}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                            
+                            {/* Show message if policy object is completely empty */}
+                            {Object.keys(policy).length === 0 && (
+                              <div className="text-xs sm:text-sm text-muted-foreground italic p-4 text-center bg-yellow-50 rounded-lg">
+                                ⚠️ No policy details available
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Additional info */}
+                  <div className="mt-4 p-3 sm:p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-xs sm:text-sm text-blue-800 leading-relaxed">
+                      <strong className="font-semibold">⚠️ Important:</strong> Cancellation charges may apply based on the dates shown above. Please review each policy carefully before booking.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+              );
+            })()}
+
+            {/* Room Amenities Card */}
+            {prebookData.HotelResult?.Rooms?.Amenities && prebookData.HotelResult.Rooms.Amenities.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base sm:text-lg">Room Amenities</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    {prebookData.HotelResult.Rooms.Amenities.map((amenity: string, index: number) => (
+                      <span key={index} className="px-2 py-1 sm:px-3 sm:py-1.5 bg-primary/10 text-primary text-xs sm:text-sm rounded-full font-medium">
+                        {amenity}
+                      </span>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* Right Sidebar - Booking Summary */}
+          <div className="lg:col-span-1">
+            {/* Booking Summary Card */}
+            <Card className="lg:sticky lg:top-24">
+              <CardHeader>
+                <CardTitle className="text-base sm:text-lg">Booking Summary</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="flex justify-between items-start gap-2">
+                    <span className="text-muted-foreground text-xs sm:text-sm">Hotel</span>
+                    <span className="font-medium text-xs sm:text-sm text-right">{hotelDetails?.HotelName || "N/A"}</span>
+                  </div>
+                  
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground text-xs sm:text-sm">Check-in</span>
+                    <span className="font-medium text-xs sm:text-sm">{location.state?.checkIn || "N/A"}</span>
+                  </div>
+                  
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground text-xs sm:text-sm">Check-out</span>
+                    <span className="font-medium text-xs sm:text-sm">{location.state?.checkOut || "N/A"}</span>
+                  </div>
+                  
+                  <div className="flex justify-between items-start gap-2">
+                    <span className="text-muted-foreground text-xs sm:text-sm">Room Type</span>
+                    <span className="font-medium text-xs sm:text-sm text-right">{prebookData.HotelResult?.Rooms?.Name || "N/A"}</span>
+                  </div>
+                  
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground text-xs sm:text-sm">Meal Type</span>
+                    <span className="font-medium text-xs sm:text-sm">{prebookData.HotelResult?.Rooms?.MealType || "N/A"}</span>
+                  </div>
+                  
+                  <hr />
+                  <div className="flex justify-between items-center gap-2">
+                    <span className="text-muted-foreground text-sm sm:text-base font-medium">Total Amount</span>
+                    <span className="font-bold text-base sm:text-lg text-primary">
+                      {prebookData.HotelResult?.Currency} {prebookData.HotelResult?.Rooms?.TotalFare || "N/A"}
+                    </span>
+                  </div>
+                  
+                  {/* Action Buttons */}
+                  <div className="flex flex-col gap-3 mt-4 sm:mt-6">
+                    <Button 
+                      size="lg" 
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 text-sm sm:text-base"
+                      onClick={handleBookNow}
+                      disabled={isBookingInProgress}
+                    >
+                      {isBookingInProgress ? 'Processing Booking...' : 'Book Now'}
+                    </Button>
+                    {/* <Button 
+                      size="lg" 
+                      variant="outline"
+                      className="w-full border-red-500 text-red-600 hover:bg-red-50 hover:border-red-600"
+                      onClick={() => setShowCancelModal(true)}
+                    >
+                      Cancel Booking
+                    </Button> */}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* Bottom Row - Important Information (Full Width) */}
+        {prebookData.HotelResult?.RateConditions && prebookData.HotelResult.RateConditions.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base sm:text-lg">Important Information</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 sm:space-y-3 text-xs sm:text-sm max-h-96 overflow-y-auto">
+                {prebookData.HotelResult.RateConditions.map((condition: string, index: number) => {
+                  // Decode HTML entities
+                  const decoded = condition
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&quot;/g, '"');
+                  
+                  return (
+                    <div key={index} className="pb-2 sm:pb-3 border-b border-gray-200 last:border-0">
+                      <div dangerouslySetInnerHTML={{ __html: decoded }} className="prose prose-sm max-w-none text-gray-700 [&>*]:text-xs [&>*]:sm:text-sm" />
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </main>
+      
+      <Footer />
+      
+      {/* Booking Modal */}
+      {showBookingModal && (
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 overflow-y-auto"
+          onClick={() => setShowBookingModal(false)}
+        >
+          <div 
+            className="bg-background rounded-lg max-w-4xl w-full my-8 animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <BookingModal 
+              hotelDetails={hotelDetails}
+              selectedRoom={prebookData?.HotelResult?.Rooms}
+              rooms={location.state?.rooms}
+              guests={location.state?.guests}
+              adults={location.state?.adults}
+              children={location.state?.children}
+              childrenAges={location.state?.childrenAges}
+              roomGuestsDistribution={location.state?.roomGuests}
+              onClose={() => setShowBookingModal(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Modal */}
+      {showCancelModal && (
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200"
+          onClick={() => setShowCancelModal(false)}
+        >
+          <div 
+            className="bg-background rounded-lg max-w-md w-full animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <CancelModal 
+              hotelName={hotelDetails?.HotelName}
+              bookingReference={location.state?.bookingCode}
+              onClose={() => setShowCancelModal(false)}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Booking;
+// /Users/apple/Downloads/NEWFLOW/src/pages/Booking.tsx
