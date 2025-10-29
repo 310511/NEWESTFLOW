@@ -569,6 +569,16 @@ const MobileSearchBar: React.FC<MobileSearchBarProps> = ({ className = "" }) => 
                     + Add Another Room
                   </Button>
                 )}
+
+                {/* Apply Button */}
+                <div className="flex justify-end pt-2">
+                  <Button
+                    onClick={() => setIsOpen(false)}
+                    className="bg-primary hover:bg-primary/90 text-white px-8 py-2 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 font-medium"
+                  >
+                    Apply
+                  </Button>
+                </div>
               </div>
             </div>
 

@@ -69,8 +69,6 @@ const Header = ({ variant = "default" }: HeaderProps) => {
   const location = useLocation();
   const isHomePage = location.pathname === "/";
   const isCompact = variant === "compact";
-  const [showLoginAdminDialog, setShowLoginAdminDialog] = useState(false);
-  const [isAdminLogin, setIsAdminLogin] = useState(true);
 
   const navigation = [
     { name: "Hotels", href: "/", icon: Home, customIcon: homeIcon },
@@ -357,52 +355,47 @@ const Header = ({ variant = "default" }: HeaderProps) => {
                       <UserPlus className="h-5 w-5 text-muted-foreground" />
                       <span className="font-medium">Sign up</span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setIsAdminLogin(false);
-                        setShowLoginAdminDialog(true);
-                      }}
-                      className="flex items-center space-x-3 cursor-pointer px-4 py-3 rounded-lg hover:bg-muted/50 transition-colors"
-                    >
-                      <UserPlus className="h-5 w-5 text-muted-foreground" />
-                      <span className="font-medium">Admin Login</span>
-                    </DropdownMenuItem>
                   </div>
                 )}
                 
                 {!isAuthenticated && <DropdownMenuSeparator className="my-2" />}
                 
-                <div className="py-2">
-                  <DropdownMenuItem
-                    onClick={() => navigate("/account")}
-                    className="flex items-center space-x-3 cursor-pointer px-4 py-3 rounded-lg hover:bg-muted/50 transition-colors"
-                  >
-                    <User className="h-5 w-5 text-muted-foreground" />
-                    <span>Your account</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    className="flex items-center space-x-3 cursor-pointer px-4 py-3 rounded-lg hover:bg-muted/50 transition-colors"
-                    onClick={() => navigate('/wishlist')}
-                  >
-                    <Heart className="h-5 w-5 text-red-500 fill-red-500" />
-                    <span>Your wishlist</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    className="flex items-center space-x-3 cursor-pointer px-4 py-3 rounded-lg hover:bg-muted/50 transition-colors"
-                    onClick={() => navigate('/profile')}
-                  >
-                    <Calendar className="h-5 w-5 text-muted-foreground" />
-                    <span>Your bookings</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    className="flex items-center space-x-3 cursor-pointer px-4 py-3 rounded-lg hover:bg-muted/50 transition-colors"
-                    onClick={() => navigate('/account-settings')}
-                  >
-                    <Settings className="h-5 w-5 text-muted-foreground" />
-                    <span>Account settings</span>
-                  </DropdownMenuItem>
-                </div>
-                <DropdownMenuSeparator className="my-2" />
+                {/* Account-related menu items - Only visible for authenticated users */}
+                {isAuthenticated && (
+                  <>
+                    <div className="py-2">
+                      <DropdownMenuItem
+                        onClick={() => navigate("/account")}
+                        className="flex items-center space-x-3 cursor-pointer px-4 py-3 rounded-lg hover:bg-muted/50 transition-colors"
+                      >
+                        <User className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                        <span className="leading-5">Your account</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={() => navigate('/wishlist')}
+                        className="flex items-center space-x-3 cursor-pointer px-4 py-3 rounded-lg hover:bg-muted/50 transition-colors"
+                      >
+                        <Heart className="h-5 w-5 text-red-500 fill-red-500 flex-shrink-0" />
+                        <span className="leading-5">Your wishlist</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={() => navigate('/profile')}
+                        className="flex items-center space-x-3 cursor-pointer px-4 py-3 rounded-lg hover:bg-muted/50 transition-colors"
+                      >
+                        <Calendar className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                        <span className="leading-5">Your bookings</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={() => navigate('/account-settings')}
+                        className="flex items-center space-x-3 cursor-pointer px-4 py-3 rounded-lg hover:bg-muted/50 transition-colors"
+                      >
+                        <Settings className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                        <span className="leading-5">Account settings</span>
+                      </DropdownMenuItem>
+                    </div>
+                    <DropdownMenuSeparator className="my-2" />
+                  </>
+                )}
                 <div className="py-2">
                   <DropdownMenuItem className="flex items-center space-x-3 cursor-pointer px-4 py-3 rounded-lg hover:bg-muted/50 transition-colors">
                     <HelpCircle className="h-5 w-5 text-muted-foreground" />
@@ -796,107 +789,6 @@ const Header = ({ variant = "default" }: HeaderProps) => {
                 </form>
               </TabsContent>
             </Tabs>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* admin login dialog */}
-       <Dialog open={showLoginAdminDialog} onOpenChange={setShowLoginAdminDialog}>
-        <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-2xl z-[10000]">
-          <div className="p-8">
-            <DialogHeader className="text-center mb-6">
-              <DialogTitle className="text-2xl font-semibold text-foreground">
-                Admin Login
-              </DialogTitle>
-              <DialogDescription className="text-sm text-muted-foreground">
-                Sign in with your admin credentials to access the dashboard
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4">
-              {/* Phone Number Section */}
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="country">Country/Region</Label>
-                  <select className="w-full p-3 border border-input rounded-lg bg-background">
-                    <option>Saudi Arabia (+966)</option>
-                    <option>United Arab Emirates (+971)</option>
-                    <option>Kuwait (+965)</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone number</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="Phone number"
-                    className="p-3 text-base"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  We'll call or text you to confirm your number. Standard
-                  message and data rates apply.{" "}
-                  <button className="underline hover:no-underline">
-                    Privacy Policy
-                  </button>
-                </p>
-              </div>
-
-              <Button className="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-lg font-medium" onClick={
-                (e) => {
-                  e.stopPropagation();
-                  // Toast.sucess("Admin logged in successfully");
-                  navigate('/admin-dashboard')
-                 
-                }
-              }
-              >
-                Continue
-              </Button>
-
-              <div className="text-center text-sm text-muted-foreground">
-                or
-              </div>
-
-              {/* Social Login Buttons */}
-              <div className="space-y-3">
-                <Button
-                  variant="outline"
-                  className="w-full py-3 rounded-lg border border-input hover:bg-muted/50"
-                >
-                  <div className="flex items-center justify-center space-x-3">
-                    <div className="w-5 h-5 bg-white rounded flex items-center justify-center border">
-                      <span className="text-xs font-bold text-blue-600">G</span>
-                    </div>
-                    <span>Continue with Google</span>
-                  </div>
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="w-full py-3 rounded-lg border border-input hover:bg-muted/50"
-                >
-                  <div className="flex items-center justify-center space-x-3">
-                    <div className="w-5 h-5 bg-black rounded flex items-center justify-center">
-                      <span className="text-xs text-white">🍎</span>
-                    </div>
-                    <span>Continue with Apple</span>
-                  </div>
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="w-full py-3 rounded-lg border border-input hover:bg-muted/50"
-                >
-                  <div className="flex items-center justify-center space-x-3">
-                    <div className="w-5 h-5 bg-gray-100 rounded flex items-center justify-center">
-                      <span className="text-xs">📧</span>
-                    </div>
-                    <span>Continue with email</span>
-                  </div>
-                </Button>
-              </div>
-            </div>
           </div>
         </DialogContent>
       </Dialog>

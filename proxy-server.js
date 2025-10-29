@@ -1107,7 +1107,7 @@ app.post("/api/booking-detail", async (req, res) => {
   }
 });
 
-// Wishlist endpoints - Forward to remote backend
+// Wishlist endpoints - Forward to remote hotel API backend
 const REMOTE_BACKEND_URL = 'http://hotelrbs.us-east-1.elasticbeanstalk.com';
 
 // Add to wishlist endpoint
@@ -1210,13 +1210,13 @@ app.get("/api/wishlist/:customer_id", async (req, res) => {
 });
 
 // Remove from wishlist endpoint
-app.post("/api/wishlist/remove", async (req, res) => {
+app.delete("/api/wishlist/remove", async (req, res) => {
   try {
     console.log("🗑️ Removing hotel from wishlist...");
     console.log("📋 Request body:", JSON.stringify(req.body, null, 2));
 
-    const response = await fetch(`${REMOTE_BACKEND_URL}/wishlist/remove`, {
-      method: "POST",
+    const response = await fetch(`${REMOTE_BACKEND_URL}/wishlist/delete`, {
+      method: "DELETE",
       headers: {
         "Content-Type": "application/json",
       },
@@ -1225,18 +1225,42 @@ app.post("/api/wishlist/remove", async (req, res) => {
 
     console.log("📥 Wishlist remove response status:", response.status);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("❌ Backend error response:", errorText);
-      throw new Error(
-        `Wishlist remove API error: ${response.status} ${response.statusText}`
-      );
+    // Try to parse as JSON, fallback to text if it fails
+    let data;
+    const contentType = response.headers.get("content-type");
+    
+    try {
+      if (contentType && contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        console.log("⚠️ Non-JSON response from remote API:", text.substring(0, 200));
+        data = {
+          success: false,
+          message: "Remote API endpoint not found or not configured for DELETE method",
+          status: response.status
+        };
+      }
+    } catch (parseError) {
+      console.error("❌ Failed to parse response:", parseError.message);
+      data = {
+        success: false,
+        message: "Invalid response from remote API",
+        status: response.status
+      };
     }
-
-    const data = await response.json();
-    console.log("✅ Hotel removed from wishlist successfully:", data);
-
-    res.json(data);
+    
+    // Pass through the response (both 200 OK and 404 Not Found are valid for JSON responses)
+    if (response.ok) {
+      console.log("✅ Hotel removed from wishlist successfully:", data);
+      res.status(response.status).json(data);
+    } else if (response.status === 404 && contentType && contentType.includes("application/json")) {
+      console.log("ℹ️ Hotel not found in wishlist:", data);
+      res.status(response.status).json(data);
+    } else {
+      console.error("❌ Backend error response:", data);
+      res.status(response.status).json(data);
+    }
   } catch (error) {
     console.error("❌ Wishlist remove proxy error:", error);
     res.status(500).json({
@@ -1258,5 +1282,5 @@ app.listen(PORT, () => {
   console.log(`🚫 Proxying Hotel Cancel API calls...`);
   console.log(`📅 Proxying Booking Details by Date API calls...`);
   console.log(`🔎 Proxying Booking Detail by Reference ID API calls...`);
-  console.log(`💖 Proxying Wishlist API calls to local Flask backend...`);
+  console.log(`💖 Proxying Wishlist API calls to remote hotel API backend...`);
 });

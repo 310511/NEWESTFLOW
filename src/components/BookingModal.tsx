@@ -20,9 +20,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { getCustomerAndBookingReference, testProxyConnection, loginCustomer, signupCustomer, generateBookingReference } from '@/services/authApi';
-import { completeBooking } from '@/services/bookingService';
 import { useAuth } from '@/hooks/useAuth';
-import { addBookingToCustomBackend } from '@/services/bookingsApi';
 
 interface BookingModalProps {
   hotelDetails: any;

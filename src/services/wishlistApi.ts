@@ -133,7 +133,7 @@ export const removeFromWishlist = async (
     console.log('🗑️ Removing hotel from wishlist:', { customerId, hotelCode });
 
     const response = await fetch(`${PROXY_BASE_URL}/wishlist/remove`, {
-      method: 'POST',
+      method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
       },

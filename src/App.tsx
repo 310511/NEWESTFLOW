@@ -20,6 +20,9 @@ import Deals from "./pages/Deals";
 import NotFound from "./pages/NotFound";
 import HotelCodeTester from "./components/HotelCodeTester";
 import ApiTest from "./components/ApiTest";
+import PaymentSuccess from "./pages/PaymentSuccess";
+import PaymentFailure from "./pages/PaymentFailure";
+import PaymentCancelled from "./pages/PaymentCancelled";
 import "./App.css";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AppLayout from "./components/AppLayout";
@@ -62,6 +65,10 @@ const App = () => (
           <Route path="/deals" element={<Deals />} />
           <Route path="/test-hotel-codes" element={<HotelCodeTester />} />
           <Route path="/api-test" element={<ApiTest />} />
+          {/* Payment Routes */}
+          <Route path="/payment/success" element={<PaymentSuccess />} />
+          <Route path="/payment/failure" element={<PaymentFailure />} />
+          <Route path="/payment/cancelled" element={<PaymentCancelled />} />
           <Route path="*" element={<NotFound />} />
           <Route element={<AppLayout />}>
             <Route path="/admin-dashboard" element={<AdminDashboard />} />

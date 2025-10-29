@@ -4,6 +4,7 @@ import { getWishlist, WishlistItem, removeFromWishlist } from "@/services/wishli
 import { getHotelDetails } from "@/services/hotelApi";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
 import {
   Loader2,
   Heart,
@@ -23,11 +24,13 @@ interface EnrichedWishlistItem extends WishlistItem {
 const Wishlist = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
+  const { toast } = useToast();
   
   // Wishlist state
   const [wishlist, setWishlist] = useState<EnrichedWishlistItem[]>([]);
   const [isLoadingWishlist, setIsLoadingWishlist] = useState(false);
   const [wishlistError, setWishlistError] = useState<string | null>(null);
+  const [removingHotelCode, setRemovingHotelCode] = useState<string | null>(null);
 
   // Booking modal state
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
@@ -148,9 +151,9 @@ const Wishlist = () => {
       <Header />
 
       <main
-        className="w-full py-8 px-6 pt-header-plus-15 max-w-7xl mx-auto"
+        className="w-full py-8 px-6 max-w-7xl mx-auto"
         style={{
-          paddingTop: "calc(var(--header-height-default) + 31px + 14px)",
+          paddingTop: "140px",
         }}
       >
         <h1 className="text-3xl font-bold mb-8 flex items-center gap-2">
@@ -329,21 +332,44 @@ const Wishlist = () => {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="bg-white/90 hover:bg-white"
+                          className="bg-white/90 hover:bg-white shadow-md transition-all duration-200 hover:scale-110"
+                          disabled={removingHotelCode === hotelCode}
                           onClick={async (e) => {
                             e.stopPropagation();
                             if (!user || !user.customer_id) return;
                             
+                            setRemovingHotelCode(hotelCode);
+                            
                             try {
+                              console.log('💔 Removing hotel from wishlist:', hotelName);
                               await removeFromWishlist(user.customer_id, hotelCode);
+                              
+                              // Show success toast
+                              toast({
+                                title: "Removed from wishlist",
+                                description: `${hotelName} has been removed from your wishlist.`,
+                                variant: "default",
+                              });
+                              
                               // Refresh wishlist after removal
-                              fetchWishlist();
+                              await fetchWishlist();
                             } catch (error) {
                               console.error('Error removing from wishlist:', error);
+                              toast({
+                                title: "Error",
+                                description: "Failed to remove hotel from wishlist. Please try again.",
+                                variant: "destructive",
+                              });
+                            } finally {
+                              setRemovingHotelCode(null);
                             }
                           }}
                         >
-                          <Heart className="h-4 w-4 fill-red-500 text-red-500" />
+                          {removingHotelCode === hotelCode ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-red-500" />
+                          ) : (
+                            <Heart className="h-4 w-4 fill-red-500 text-red-500 transition-all duration-200 hover:scale-110" />
+                          )}
                         </Button>
                       </div>
                     </div>

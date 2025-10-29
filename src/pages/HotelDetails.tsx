@@ -31,6 +31,7 @@ import {
 import Loader from "@/components/ui/Loader";
 import HotelRoomDetails from "@/components/HotelRoomDetails";
 import HotelMap from "@/components/HotelMap";
+import { AvailabilitySection } from "@/components/AvailabilitySection";
 import { prebookHotel } from "@/services/bookingapi";
 import { searchHotels, getHotelDetails } from "@/services/hotelApi";
 import { APP_CONFIG, getCurrentDate, getDateFromNow } from "@/config/constants";
@@ -61,6 +62,7 @@ const HotelDetails = () => {
   const [searchingForBookingCode, setSearchingForBookingCode] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<any>(null);
   const [showAllAmenities, setShowAllAmenities] = useState(false);
+  const [searchingAvailability, setSearchingAvailability] = useState(false);
   // console.log(HotelDetails , " details")
   console.log(id ,'id')
   
@@ -83,6 +85,199 @@ const HotelDetails = () => {
   const roomGuests = roomGuestsParam
     ? JSON.parse(roomGuestsParam)
     : [];
+
+  // Handler for availability changes
+  const handleAvailabilityChange = async (params: {
+    checkIn: string;
+    checkOut: string;
+    adults: number;
+    children: number;
+    rooms: number;
+    childrenAges?: number[];
+    roomGuests?: any[];
+  }) => {
+    console.log('🔄 Availability changed:', params);
+    setSearchingAvailability(true);
+    
+    try {
+      // Build PaxRooms structure for availability check
+      let paxRooms;
+      
+      if (params.roomGuests && params.roomGuests.length > 0) {
+        // Use detailed room guest distribution
+        paxRooms = params.roomGuests.map((room: any) => ({
+          Adults: room.adults || 1,
+          Children: room.children || 0,
+          ChildrenAges: room.childrenAges || [],
+        }));
+        console.log('✅ Using detailed room guest distribution:', paxRooms);
+      } else {
+        // Distribute guests across rooms
+        const roomsCount = params.rooms;
+        const adultsPerRoom = Math.floor(params.adults / roomsCount);
+        const childrenPerRoom = Math.floor(params.children / roomsCount);
+        
+        paxRooms = Array.from({ length: roomsCount }, (_, index) => {
+          const isLastRoom = index === roomsCount - 1;
+          const roomAdults = isLastRoom ? params.adults - (adultsPerRoom * (roomsCount - 1)) : adultsPerRoom;
+          const roomChildren = isLastRoom ? params.children - (childrenPerRoom * (roomsCount - 1)) : childrenPerRoom;
+          
+          const startIdx = index * childrenPerRoom;
+          const endIdx = isLastRoom ? params.childrenAges?.length || 0 : startIdx + childrenPerRoom;
+          const roomChildrenAges = params.childrenAges?.slice(startIdx, endIdx) || [];
+          
+          return {
+            Adults: Math.max(1, roomAdults),
+            Children: roomChildren,
+            ChildrenAges: roomChildrenAges,
+          };
+        });
+        console.log('✅ Using distributed guests across rooms:', paxRooms);
+      }
+      
+      // Check hotel availability for new dates and guests
+      console.log('🔍 Checking hotel availability for new parameters...');
+      const apiSearchParams = {
+        CheckIn: params.checkIn,
+        CheckOut: params.checkOut,
+        HotelCodes: id,
+        GuestNationality: APP_CONFIG.DEFAULT_GUEST_NATIONALITY,
+        PreferredCurrencyCode: APP_CONFIG.DEFAULT_CURRENCY,
+        PaxRooms: paxRooms,
+        IsDetailResponse: true,
+        ResponseTime: APP_CONFIG.DEFAULT_RESPONSE_TIME
+      };
+      
+      const searchResponse = await Promise.race([
+        searchHotels(apiSearchParams),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Availability check timeout after 60 seconds')), 60000)
+        )
+      ]);
+      console.log('🔍 Availability check response:', searchResponse);
+      
+      // Check if hotel is available
+      if (searchResponse?.Status?.Code === '204' || searchResponse?.Status?.Code === 204) {
+        console.log('❌ Hotel not available for the selected dates and guests');
+        toast({
+          title: "Hotel Not Available",
+          description: "This hotel is not available for your selected dates and number of guests. Redirecting to search results...",
+          variant: "destructive",
+        });
+        
+        // Redirect to search results with the new parameters
+        setTimeout(() => {
+          const searchParams = new URLSearchParams();
+          searchParams.set('checkIn', params.checkIn);
+          searchParams.set('checkOut', params.checkOut);
+          searchParams.set('adults', params.adults.toString());
+          searchParams.set('children', params.children.toString());
+          searchParams.set('rooms', params.rooms.toString());
+          
+          if (params.childrenAges && params.childrenAges.length > 0) {
+            searchParams.set('childrenAges', params.childrenAges.join(','));
+          }
+          
+          if (params.roomGuests && params.roomGuests.length > 0) {
+            searchParams.set('roomGuests', JSON.stringify(params.roomGuests));
+          }
+          
+          // Get the destination from the current hotel details
+          if (hotelDetails) {
+            searchParams.set('destination', `${hotelDetails.CityName}, ${hotelDetails.CountryName}`);
+          }
+          
+          navigate(`/search?${searchParams.toString()}`);
+          setSearchingAvailability(false);
+        }, 2000);
+        
+        return;
+      }
+      
+      // Check if we got valid hotel results
+      if (!searchResponse?.HotelResult?.length || searchResponse.HotelResult.length === 0) {
+        console.log('❌ No hotel results found for the new parameters');
+        toast({
+          title: "Hotel Not Available",
+          description: "This hotel is not available for your selected dates and number of guests. Redirecting to search results...",
+          variant: "destructive",
+        });
+        
+        // Redirect to search results
+        setTimeout(() => {
+          const searchParams = new URLSearchParams();
+          searchParams.set('checkIn', params.checkIn);
+          searchParams.set('checkOut', params.checkOut);
+          searchParams.set('adults', params.adults.toString());
+          searchParams.set('children', params.children.toString());
+          searchParams.set('rooms', params.rooms.toString());
+          
+          if (params.childrenAges && params.childrenAges.length > 0) {
+            searchParams.set('childrenAges', params.childrenAges.join(','));
+          }
+          
+          if (params.roomGuests && params.roomGuests.length > 0) {
+            searchParams.set('roomGuests', JSON.stringify(params.roomGuests));
+          }
+          
+          if (hotelDetails) {
+            searchParams.set('destination', `${hotelDetails.CityName}, ${hotelDetails.CountryName}`);
+          }
+          
+          navigate(`/search?${searchParams.toString()}`);
+          setSearchingAvailability(false);
+        }, 2000);
+        
+        return;
+      }
+      
+      // Hotel is available - update URL and continue
+      console.log('✅ Hotel is available! Updating parameters...');
+      toast({
+        title: "Hotel Available",
+        description: "Great! This hotel is available for your selected dates.",
+      });
+      
+      const newParams = new URLSearchParams(urlSearchParams.toString());
+      newParams.set('checkIn', params.checkIn);
+      newParams.set('checkOut', params.checkOut);
+      newParams.set('adults', params.adults.toString());
+      newParams.set('children', params.children.toString());
+      newParams.set('rooms', params.rooms.toString());
+      
+      if (params.childrenAges && params.childrenAges.length > 0) {
+        newParams.set('childrenAges', params.childrenAges.join(','));
+      } else {
+        newParams.delete('childrenAges');
+      }
+      
+      // Add room guests distribution if available
+      if (params.roomGuests && params.roomGuests.length > 0) {
+        newParams.set('roomGuests', JSON.stringify(params.roomGuests));
+      }
+      
+      // Navigate with new parameters - this will trigger a re-search via useEffect
+      navigate(`/hotel/${id}?${newParams.toString()}`, { replace: true });
+      
+      // Scroll to rooms section after a brief delay
+      setTimeout(() => {
+        const roomsSection = document.getElementById('available-rooms-section');
+        if (roomsSection) {
+          roomsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        setSearchingAvailability(false);
+      }, 1000);
+      
+    } catch (error) {
+      console.error('❌ Error checking hotel availability:', error);
+      toast({
+        title: "Error",
+        description: "Unable to check hotel availability. Please try again.",
+        variant: "destructive",
+      });
+      setSearchingAvailability(false);
+    }
+  };
 
   // Handle ESC key to close modals
   useEffect(() => {
@@ -319,10 +514,6 @@ const HotelDetails = () => {
           if (hotelDetailsResponse?.Rooms?.BookingCode) {
             console.log('✅ Found booking code from hotel details:', hotelDetailsResponse.Rooms.BookingCode);
             setBookingCode(hotelDetailsResponse.Rooms.BookingCode);
-            toast({
-              title: "Hotel Available",
-              description: "This hotel is available for booking! You can now proceed with your reservation.",
-            });
             return;
           }
         } catch (error) {
@@ -334,7 +525,7 @@ const HotelDetails = () => {
         const searchResponse = await Promise.race([
           searchHotels(apiSearchParams),
           new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Search request timeout after 30 seconds')), 30000)
+            setTimeout(() => reject(new Error('Search request timeout after 60 seconds')), 60000)
           )
         ]);
         
@@ -386,20 +577,12 @@ const HotelDetails = () => {
                   const foundBookingCode = foundHotel.Rooms[0].BookingCode;
                   setBookingCode(foundBookingCode);
                   console.log('✅ Found booking code from search (array):', foundBookingCode);
-                  toast({
-                    title: "Hotel Available",
-                    description: "This hotel is available for booking! You can now proceed with your reservation.",
-                  });
                   return;
                 } else if (foundHotel.Rooms.BookingCode) {
                   // Handle object structure where Rooms is an object
                   const foundBookingCode = foundHotel.Rooms.BookingCode;
                   setBookingCode(foundBookingCode);
                   console.log('✅ Found booking code from search (object):', foundBookingCode);
-                  toast({
-                    title: "Hotel Available",
-                    description: "This hotel is available for booking! You can now proceed with your reservation.",
-                  });
                   return;
                 }
               }
@@ -423,10 +606,6 @@ const HotelDetails = () => {
                 const foundBookingCode = hotel.Rooms.BookingCode;
                 setBookingCode(foundBookingCode);
                 console.log('✅ Found booking code from search (single):', foundBookingCode);
-                toast({
-                  title: "Hotel Available",
-                  description: "This hotel is available for booking! You can now proceed with your reservation.",
-                });
                 return;
               }
             }
@@ -478,6 +657,18 @@ const HotelDetails = () => {
     console.log("🔍 Debug - guests:", guests);
     console.log("🔍 Debug - rooms:", rooms);
     
+    // 🔒 SECURITY: Check if user is logged in FIRST
+    if (!isAuthenticated) {
+      toast({
+        title: "Login Required",
+        description: "Please log in or sign up before reserving a room.",
+        variant: "destructive",
+      });
+      // Scroll to top to show login button
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    
     // Check if a room is selected
     if (!selectedRoom) {
       toast({
@@ -515,7 +706,7 @@ const HotelDetails = () => {
 
       // Check if prebook was successful
       if (prebookResponse.Status && prebookResponse.Status.Code === "200") {
-        // Generate booking reference ID if user is logged in
+        // Generate booking reference ID (user is guaranteed to be logged in at this point)
         try {
           const userData = JSON.parse(localStorage.getItem('userData') || 'null');
           if (userData && userData.customer_id) {
@@ -525,11 +716,25 @@ const HotelDetails = () => {
             localStorage.setItem('booking_reference_id', bookingRefResult.booking_reference_id);
             console.log("✅ Booking reference ID generated:", bookingRefResult.booking_reference_id);
           } else {
-            console.log("ℹ️ User not logged in, booking reference will be generated after login");
+            // This should never happen now, but keeping as failsafe
+            console.error("❌ User data missing despite authentication check!");
+            toast({
+              title: "Authentication Error",
+              description: "Please log out and log in again.",
+              variant: "destructive",
+            });
+            setPrebookLoading(false);
+            return;
           }
         } catch (refError) {
           console.error("⚠️ Failed to generate booking reference:", refError);
-          // Don't fail the reservation if booking reference generation fails
+          toast({
+            title: "Booking Reference Error",
+            description: "Failed to generate booking reference. Please try again.",
+            variant: "destructive",
+          });
+          setPrebookLoading(false);
+          return;
         }
         
         // Store hotel and room details in custom backend before navigating
@@ -922,7 +1127,7 @@ const HotelDetails = () => {
 
               {/* Available Rooms Section - Only show for API hotels */}
               {!hotelDetails._isLocalData && (
-                <div className="mt-8">
+                <div id="available-rooms-section" className="mt-8">
                   <div className="space-y-4">
                     {/* Show selected room summary if available */}
                     {selectedRoom && !showRoomDetails && (
@@ -1012,11 +1217,17 @@ const HotelDetails = () => {
                 ) : (
                   <Button 
                     size="lg" 
-                    className="w-96 bg-primary hover:bg-primary/90 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                    className="w-96 bg-primary hover:bg-primary/90 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                     onClick={handleReserveClick}
-                    disabled={prebookLoading || !bookingCode || searchingForBookingCode}
+                    disabled={!isAuthenticated || prebookLoading || !bookingCode || searchingForBookingCode}
                   >
-                    {searchingForBookingCode ? "Finding booking code..." : prebookLoading ? "Processing..." : "Reserve"}
+                    {!isAuthenticated 
+                      ? "🔒 Login Required to Reserve" 
+                      : searchingForBookingCode 
+                        ? "Finding booking code..." 
+                        : prebookLoading 
+                          ? "Processing..." 
+                          : "Reserve"}
                   </Button>
                 )}
                 <video
@@ -1082,6 +1293,18 @@ const HotelDetails = () => {
 </div>
           </div>
         </div>
+
+        {/* Availability Section - Allow users to modify search */}
+        <AvailabilitySection
+          checkIn={checkIn}
+          checkOut={checkOut}
+          adults={adults}
+          children={children}
+          rooms={parseInt(rooms || "1")}
+          childrenAges={childrenAges}
+          onSearchChange={handleAvailabilityChange}
+          isLoading={searchingAvailability}
+        />
 
         {/* Description and Hotel Information */}
         {hotelDetails.Description && (() => {

@@ -23,6 +23,8 @@ import {
   getCountryList,
   getCityList,
   getHotelCodeList,
+  searchCityByName,
+  getAllCities,
 } from "@/services/hotelCodeApi";
 import { APP_CONFIG, getCurrentDate, getDateFromNow } from "@/config/constants";
 import { hotels as localHotels } from "@/data/hotels";
@@ -260,80 +262,26 @@ const SearchResults = () => {
 
       // No hardcoded city codes - everything will be fetched dynamically from API
 
-      // Simple 4-step flow: Country → City → Hotel Codes → Search
+      // NEW FLOW: City → City Codes (city_code + country_code) → Hotel Codes → Search
       const performSearch = async () => {
-        console.log("🔍 Starting simple 4-step search for:", destination);
+        console.log("🔍 Starting NEW city-first search for:", destination);
         setIsSearching(true);
 
         try {
-          // Step 1: Get country code
-          console.log("🌍 Step 1: Getting country code...");
-          const countryResponse = await getCountryList();
-          const countryName =
-            destination.split(",")[1]?.trim() ||
-            destination.split(",")[0]?.trim();
-          const country = countryResponse.CountryList?.find(
-            (c) =>
-              c.Name.toLowerCase().includes(countryName.toLowerCase()) ||
-              countryName.toLowerCase().includes(c.Name.toLowerCase())
-          );
-
-          if (!country) {
-            console.log("❌ Country not found:", countryName);
-            console.log("🔄 Using fallback local hotels");
-            setUseFallbackHotels(true);
-            
-            // Transform local hotels to match API structure
-            const transformedHotels = localHotels.map(hotel => ({
-              HotelCode: hotel.id,
-              HotelName: hotel.name,
-              HotelRating: hotel.rating,
-              Address: hotel.location,
-              CityName: hotel.location.split(',')[0] || hotel.location,
-              CountryName: "Saudi Arabia",
-              Price: hotel.price,
-              Currency: "USD",
-              FrontImage: hotel.images[0],
-              Images: hotel.images,
-              StarRating: hotel.rating,
-              Latitude: hotel.coordinates?.lat || 24.7136,
-              Longitude: hotel.coordinates?.lng || 46.6753,
-              Amenities: hotel.amenities,
-              _isLocalData: true,
-              // Add rooms structure
-              Rooms: [{
-                Name: "Standard Room",
-                TotalFare: hotel.price,
-                RoomIndex: 1,
-                Currency: "USD"
-              }]
-            }));
-            
-            setHotels(transformedHotels as any);
-            setIsSearching(false);
-            return;
-          }
-
-          const countryCode = country.Code;
-          console.log(
-            "✅ Step 1 complete - Country:",
-            country.Name,
-            "→",
-            countryCode
-          );
-
-          // Step 2: Get city code
-          console.log("🏙️ Step 2: Getting city code...");
-          const cityResponse = await getCityList(countryCode);
+          // Step 1: Search city by name to get city_code and country_code
+          console.log("🏙️ Step 1: Searching for city...");
           const cityName = destination.split(",")[0]?.trim();
-          const city = cityResponse.CityList?.find(
-            (c) =>
-              c.CityName.toLowerCase().includes(cityName.toLowerCase()) ||
-              cityName.toLowerCase().includes(c.CityName.toLowerCase())
-          );
-
-          if (!city) {
-            console.log("❌ City not found:", cityName);
+          
+          let citySearchResult;
+          try {
+            citySearchResult = await searchCityByName(cityName);
+            console.log("✅ Step 1 complete - City found:");
+            console.log("   City:", citySearchResult.city_name);
+            console.log("   City Code:", citySearchResult.city_code);
+            console.log("   Country:", citySearchResult.country_name);
+            console.log("   Country Code:", citySearchResult.country_code);
+          } catch (error) {
+            console.log("❌ City not found via custom API:", cityName);
             console.log("🔄 Using fallback local hotels");
             setUseFallbackHotels(true);
             
@@ -368,16 +316,11 @@ const SearchResults = () => {
             return;
           }
 
-          const cityCode = city.CityCode;
-          console.log(
-            "✅ Step 2 complete - City:",
-            city.CityName,
-            "→",
-            cityCode
-          );
+          const cityCode = citySearchResult.city_code;
+          const countryCode = citySearchResult.country_code;
 
-          // Step 3: Get hotel codes
-          console.log("🏨 Step 3: Getting hotel codes...");
+          // Step 2: Get hotel codes using the city_code and country_code
+          console.log("🏨 Step 2: Getting hotel codes...");
           const hotelResponse = await getHotelCodeList(
             countryCode,
             cityCode,
@@ -388,7 +331,7 @@ const SearchResults = () => {
             !hotelResponse.HotelList ||
             hotelResponse.HotelList.length === 0
           ) {
-            console.log("❌ No hotels found for:", cityName);
+            console.log("❌ No hotels found for:", citySearchResult.city_name);
             setIsSearching(false);
             return;
           }
@@ -401,7 +344,7 @@ const SearchResults = () => {
           if (cityHotels.length === 0) {
             console.log(
               "❌ No hotels found for city:",
-              cityName,
+              citySearchResult.city_name,
               "with city code:",
               cityCode
             );
@@ -415,15 +358,15 @@ const SearchResults = () => {
             .map((hotel) => hotel.HotelCode)
             .join(",");
           console.log(
-            "✅ Step 3 complete - Found",
+            "✅ Step 2 complete - Found",
             cityHotels.length,
             "hotels for",
-            cityName,
+            citySearchResult.city_name,
             "using first 20"
           );
 
-          // Step 4: Search hotels
-          console.log("🔍 Step 4: Searching hotels...");
+          // Step 3: Search hotels
+          console.log("🔍 Step 3: Searching hotels...");
 
           // Build PaxRooms structure based on room guest distribution or defaults
           let paxRooms;
@@ -483,7 +426,7 @@ const SearchResults = () => {
 
           const searchResult = await search(searchParams);
           console.log("🔍 City-based search result:", searchResult);
-          console.log("✅ Step 4 complete - Search finished");
+          console.log("✅ Step 3 complete - Search finished");
           console.log("🔍 Final search result:", searchResult);
           console.log("🔍 Hotels state after search:", hotels);
 

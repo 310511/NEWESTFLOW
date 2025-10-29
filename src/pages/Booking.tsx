@@ -5,12 +5,11 @@ import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ArrowLeft, CheckCircle, Clock, User, Calendar, Users } from "lucide-react";
+import { ArrowLeft, CheckCircle, Clock, User, Calendar, Users, CreditCard } from "lucide-react";
 import BookingModal from "@/components/BookingModal";
 import CancelModal from "@/components/CancelModal";
-import { completeBooking } from '@/services/bookingService';
-import { addBookingToCustomBackend } from '@/services/bookingsApi';
 import { useAuth } from '@/hooks/useAuth';
+import { createTelrOrder } from '@/services/telrPaymentApi';
 
 const Booking = () => {
   const { id } = useParams();
@@ -22,7 +21,39 @@ const Booking = () => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [isBookingInProgress, setIsBookingInProgress] = useState(false);
-  const [bookingConfirmation, setBookingConfirmation] = useState<any>(null);
+  const [hasGuestDetails, setHasGuestDetails] = useState(false);
+
+  // Check if guest details exist
+  const checkGuestDetails = () => {
+    const savedGuestDetails = localStorage.getItem('guest_details');
+    const currentBookingRefId = localStorage.getItem('booking_reference_id');
+    
+    if (savedGuestDetails && currentBookingRefId) {
+      try {
+        const guestDetails = JSON.parse(savedGuestDetails);
+        const savedBookingRefId = guestDetails.bookingData?.bookingReference?.booking_reference_id;
+        
+        // Check if booking references match
+        if (savedBookingRefId === currentBookingRefId) {
+          setHasGuestDetails(true);
+          return true;
+        } else {
+          console.log('🧹 Booking reference mismatch, clearing guest details');
+          localStorage.removeItem('guest_details');
+          setHasGuestDetails(false);
+          return false;
+        }
+      } catch (error) {
+        console.log('🧹 Invalid guest details, clearing');
+        localStorage.removeItem('guest_details');
+        setHasGuestDetails(false);
+        return false;
+      }
+    }
+    
+    setHasGuestDetails(false);
+    return false;
+  };
 
   useEffect(() => {
     if (location.state?.prebookData) {
@@ -32,32 +63,19 @@ const Booking = () => {
       setHotelDetails(location.state.hotelDetails);
     }
     
-    // Clean up old guest details if they don't match current booking reference
-    const cleanupOldGuestDetails = () => {
-      const savedGuestDetails = localStorage.getItem('guest_details');
-      const currentBookingRefId = localStorage.getItem('booking_reference_id');
-      
-      if (savedGuestDetails && currentBookingRefId) {
-        try {
-          const guestDetails = JSON.parse(savedGuestDetails);
-          const savedBookingRefId = guestDetails.bookingData?.bookingReference?.booking_reference_id;
-          
-          if (savedBookingRefId !== currentBookingRefId) {
-            console.log('🧹 Cleaning up mismatched guest details on page load');
-            localStorage.removeItem('guest_details');
-          }
-        } catch (error) {
-          console.log('🧹 Cleaning up invalid guest details on page load');
-          localStorage.removeItem('guest_details');
-        }
-      }
-    };
-    
-    cleanupOldGuestDetails();
+    // Check guest details on mount
+    checkGuestDetails();
   }, [location.state]);
+  
+  // Re-check guest details when modal closes
+  useEffect(() => {
+    if (!showBookingModal) {
+      checkGuestDetails();
+    }
+  }, [showBookingModal]);
 
   const handleBookNow = async () => {
-    console.log('🎯 Book Now button clicked!');
+    console.log('🎯 Book Now button clicked - Proceeding to Payment!');
     
     // Check if guest details are saved in localStorage
     const savedGuestDetails = localStorage.getItem('guest_details');
@@ -70,7 +88,7 @@ const Booking = () => {
       return;
     }
     
-    // Guest details are saved, check if they match the current booking reference
+    // Guest details are saved, proceed to payment
     try {
       const guestDetails = JSON.parse(savedGuestDetails);
       const savedBookingRefId = guestDetails.bookingData?.bookingReference?.booking_reference_id;
@@ -88,140 +106,72 @@ const Booking = () => {
       }
       
       console.log('✅ Guest details found and booking reference matches');
+      console.log('💳 Proceeding to payment (booking will be confirmed AFTER payment)');
       
-      // Clear guest details immediately after reading (use only once)
-      localStorage.removeItem('guest_details');
-      console.log('🗑️ Guest details removed from localStorage (will be used once)');
+      // Don't clear guest details yet - we need them after payment
+      // They will be cleared after successful booking confirmation
       
-      setIsBookingInProgress(true);
-      
-      // Extract data from saved guest details
-      const { bookingForm, roomGuests, bookingData, rooms, guests, selectedRoom: savedRoom } = guestDetails;
-      
-      // Use saved room or fallback to prebookData room
-      const roomData = savedRoom || prebookData?.HotelResult?.Rooms;
-      const bookingCode = roomData?.BookingCode;
-      
-      if (!bookingCode) {
-        throw new Error('No booking code available. Please select a room first.');
-      }
-      
+      // Extract data for payment
+      const { bookingForm } = guestDetails;
+      const roomData = guestDetails.selectedRoom || prebookData?.HotelResult?.Rooms;
       const totalFare = parseFloat(roomData?.TotalFare || roomData?.Price || 0);
       
+      // IMPORTANT: Telr account only supports AED currency
+      // Always use AED for payments regardless of hotel currency
+      const currency = 'AED';
+      
       if (totalFare <= 0) {
-        throw new Error('Invalid room price. Please select a valid room.');
+        throw new Error('Invalid room price. Cannot proceed to payment.');
       }
       
-      console.log('📦 Booking with data:', {
-        bookingCode,
-        bookingReferenceId: bookingData.bookingReference.booking_reference_id,
-        totalFare,
-        bookingForm,
-        customerData: bookingData.customerData
+      // Get booking history for customer details
+      const bookingHistory = JSON.parse(localStorage.getItem('booking_history') || '[]');
+      const latestBooking = bookingHistory[bookingHistory.length - 1];
+      
+      console.log('💰 Creating payment order for amount:', totalFare, currency);
+      console.log('ℹ️  Note: Using AED currency as configured in Telr account');
+      
+      // Create Telr payment order
+      const telrOrder = await createTelrOrder({
+        cartId: currentBookingRefId || 'BOOKING_' + Date.now(),
+        amount: totalFare.toFixed(2),
+        currency: currency,
+        description: `Hotel Booking - ${hotelDetails?.HotelName || 'Hotel'}`,
+        customer: {
+          ref: user?.customer_id || 'guest_' + Date.now(),
+          email: bookingForm.email || latestBooking?.customerEmail || user?.email || 'guest@example.com',
+          forenames: bookingForm.firstName || latestBooking?.customerName?.split(' ')[0] || 'Guest',
+          surname: bookingForm.lastName || latestBooking?.customerName?.split(' ').slice(1).join(' ') || 'User',
+          addressLine1: '123 Main Street', // TODO: Collect in booking modal
+          city: 'Dubai',
+          country: 'AE', // ISO country code
+          phone: bookingForm.phone || user?.phone || '1234567890'
+        },
+        returnUrls: {
+          authorised: `${window.location.origin}/payment/success`,
+          declined: `${window.location.origin}/payment/failure`,
+          cancelled: `${window.location.origin}/payment/cancelled`
+        }
       });
 
-      // Call booking API
-      const result = await completeBooking(
-        bookingCode,
-        bookingData.bookingReference.booking_reference_id,
-        bookingData.customerData,
-        bookingForm,
-        totalFare,
-        rooms,
-        guests,
-        roomGuests
-      );
-
-      if (result.success) {
-        const confirmationData = {
-          confirmationNumber: result.confirmationNumber || 'N/A',
-          bookingId: result.data?.BookingId || 'N/A',
-          clientReferenceId: result.data?.ClientReferenceId || 'N/A',
-          bookingReferenceId: bookingData.bookingReference.booking_reference_id,
-          timestamp: new Date().toISOString()
-        };
-        
-        setBookingConfirmation(confirmationData);
-        
-        // Clear used booking reference (will be regenerated on next Reserve click)
-        localStorage.removeItem('booking_reference_id');
-        console.log('♻️ Cleared booking reference ID - new one will be generated on next Reserve click');
-        
-        // Save to localStorage for later retrieval (for cancellation)
-        const bookingHistory = JSON.parse(localStorage.getItem('booking_history') || '[]');
-        bookingHistory.push({
-          ...confirmationData,
-          hotelName: hotelDetails?.HotelName || 'Unknown Hotel',
-          roomName: roomData?.Name || 'Unknown Room',
-          totalAmount: totalFare,
-          customerEmail: bookingForm.email,
-          customerName: `${bookingForm.firstName} ${bookingForm.lastName}`
-        });
-        localStorage.setItem('booking_history', JSON.stringify(bookingHistory));
-        
-        console.log('🎉 ======= BOOKING CONFIRMED =======');
-        console.log('📋 Confirmation Number:', confirmationData.confirmationNumber);
-        console.log('🆔 Booking ID:', confirmationData.bookingId);
-        console.log('🔖 Booking Reference ID:', confirmationData.bookingReferenceId);
-        console.log('===================================');
-        
-        // Add booking details to custom backend
-        try {
-          console.log('📝 Storing booking details in custom backend...');
-          await addBookingToCustomBackend({
-            booking_reference_id: confirmationData.bookingReferenceId,
-            confirmation_number: confirmationData.confirmationNumber,
-            client_reference_id: confirmationData.clientReferenceId,
-            customer_id: user?.customer_id || '',
-            agency_name: 'TravelPro',
-            hotel_code: hotelDetails?.HotelCode || '',
-            check_in: location.state?.checkIn || new Date().toISOString().split('T')[0],
-            check_out: location.state?.checkOut || new Date().toISOString().split('T')[0],
-            booking_date: new Date().toISOString(),
-            status: 'Confirmed',
-            voucher_status: true,
-            total_fare: totalFare,
-            currency: prebookData.HotelResult?.Currency || 'USD',
-            no_of_rooms: rooms,
-            invoice_number: `INV${Date.now()}`
-          });
-          console.log('✅ Booking details stored in custom backend successfully');
-        } catch (backendError) {
-          console.error('⚠️ Failed to store booking in custom backend (non-critical):', backendError);
-        }
-        
-        // Show success alert
-        alert(`✅ Booking confirmed!\n\nConfirmation Number: ${confirmationData.confirmationNumber}\nBooking ID: ${confirmationData.bookingId}\n\n⚠️ IMPORTANT: Save these numbers for cancellation and verification!`);
-        
-      } else {
-        // Booking failed - generate new booking reference for retry
-        console.error('❌ Booking failed:', result);
-        
-        // Generate new booking reference ID for retry
-        if (user?.customer_id) {
-          try {
-            console.log('🔍 Generating new booking reference for retry...');
-            const { generateBookingReference } = await import('@/services/authApi');
-            const newBookingRef = await generateBookingReference(user.customer_id);
-            localStorage.setItem('booking_reference_id', newBookingRef.booking_reference_id);
-            console.log('✅ New booking reference generated for retry:', newBookingRef.booking_reference_id);
-          } catch (error) {
-            console.error('⚠️ Failed to generate new booking reference:', error);
-          }
-        }
-        
-        // Clean up the error message to remove duplicates
-        let errorMessage = result.message || 'Booking failed. Please try again.';
-        // Remove "Booking failed: " prefix if it exists
-        errorMessage = errorMessage.replace(/^Booking failed:\s*/i, '');
-        // Remove "Failed. " prefix if it exists
-        errorMessage = errorMessage.replace(/^Failed\.\s*/i, '');
-        
-        alert(`❌ Booking failed: ${errorMessage}`);
-        setIsBookingInProgress(false);
-      }
+      console.log('✅ Telr order created:', telrOrder.order.ref);
+      
+      // Save Telr order reference and booking data for use after payment
+      localStorage.setItem('telr_order_ref', telrOrder.order.ref);
+      localStorage.setItem('pending_booking_data', JSON.stringify({
+        prebookData,
+        hotelDetails,
+        checkIn: location.state?.checkIn,
+        checkOut: location.state?.checkOut
+      }));
+      
+      // Redirect to Telr payment page
+      console.log('🔗 Redirecting to Telr payment page...');
+      console.log('⚠️ Booking will be confirmed ONLY after successful payment');
+      window.location.href = telrOrder.order.url;
+      
     } catch (error) {
-      console.error('💥 Booking error:', error);
+      console.error('❌ Payment initiation error:', error);
       
       // If error is due to invalid guest details or parsing, clear them
       if (error instanceof SyntaxError) {
@@ -229,26 +179,8 @@ const Booking = () => {
         localStorage.removeItem('guest_details');
       }
       
-      // Generate new booking reference ID for retry after error
-      if (user?.customer_id) {
-        try {
-          console.log('🔍 Generating new booking reference after error...');
-          const { generateBookingReference } = await import('@/services/authApi');
-          const newBookingRef = await generateBookingReference(user.customer_id);
-          localStorage.setItem('booking_reference_id', newBookingRef.booking_reference_id);
-          console.log('✅ New booking reference generated after error:', newBookingRef.booking_reference_id);
-        } catch (refError) {
-          console.error('⚠️ Failed to generate new booking reference:', refError);
-        }
-      }
-      
-      // Clean up the error message
-      let errorMessage = error instanceof Error ? error.message : 'Booking failed. Please try again.';
-      errorMessage = errorMessage.replace(/^Booking failed:\s*/i, '');
-      errorMessage = errorMessage.replace(/^Failed\.\s*/i, '');
-      
-      alert(`❌ Booking failed: ${errorMessage}`);
-      setIsBookingInProgress(false);
+      let errorMessage = error instanceof Error ? error.message : 'Failed to initiate payment. Please try again.';
+      alert(`❌ ${errorMessage}`);
     }
   };
 
@@ -542,12 +474,47 @@ const Booking = () => {
                   <div className="flex flex-col gap-3 mt-4 sm:mt-6">
                     <Button 
                       size="lg" 
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 text-sm sm:text-base"
+                      className={`w-full shadow-lg hover:shadow-xl transition-all duration-300 text-sm sm:text-base ${
+                        hasGuestDetails 
+                          ? 'bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700' 
+                          : 'bg-blue-600 hover:bg-blue-700'
+                      } text-white`}
                       onClick={handleBookNow}
                       disabled={isBookingInProgress}
                     >
-                      {isBookingInProgress ? 'Processing Booking...' : 'Book Now'}
+                      {isBookingInProgress ? (
+                        <>
+                          <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                          Processing...
+                        </>
+                      ) : hasGuestDetails ? (
+                        <>
+                          <CreditCard className="mr-2 h-5 w-5" />
+                          Proceed to Payment
+                        </>
+                      ) : (
+                        <>
+                          <User className="mr-2 h-5 w-5" />
+                          Give Details
+                        </>
+                      )}
                     </Button>
+                    
+                    {hasGuestDetails ? (
+                      <>
+                        <p className="text-xs text-center text-muted-foreground">
+                          💳 You will be redirected to secure payment gateway
+                        </p>
+                        
+                        <p className="text-xs text-center text-orange-600 font-medium">
+                          ⚠️ Booking will be confirmed only after successful payment
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-center text-muted-foreground">
+                        📝 Fill in your guest details to proceed
+                      </p>
+                    )}
                     {/* <Button 
                       size="lg" 
                       variant="outline"

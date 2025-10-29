@@ -9,6 +9,22 @@ from openpyxl import Workbook, load_workbook
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
+# Register Telr webhook blueprint
+try:
+    from telr_webhook import telr_webhook_bp
+    app.register_blueprint(telr_webhook_bp)
+    print("✅ Telr webhook blueprint registered")
+except ImportError:
+    print("⚠️ Telr webhook module not found - payment webhooks will not work")
+
+# Register Telr API proxy blueprint
+try:
+    from telr_api import telr_api_bp
+    app.register_blueprint(telr_api_bp)
+    print("✅ Telr API proxy blueprint registered")
+except ImportError:
+    print("⚠️ Telr API module not found - payment API will not work")
+
 # Hotel configuration
 HOTEL_EXCEL_FILE_PATH = 'hotels.xlsx'
 HOTEL_SHEET_NAME = 'Hotels'
@@ -432,7 +448,7 @@ def get_wishlist(customer_id):
             "message": f"Error retrieving wishlist: {str(e)}"
         }), 500
 
-@app.route('/wishlist/remove', methods=['POST'])
+@app.route('/wishlist/remove', methods=['DELETE', 'POST'])
 def remove_from_wishlist():
     """Remove hotel from user's wishlist"""
     try:
@@ -495,24 +511,34 @@ def remove_from_wishlist():
             "message": f"Server error while removing from wishlist"
         }), 500
 
-if __name__ == '__main__':
-    # Create the Excel files if they don't exist when starting the server
+def init_app():
+    """Initialize application - called on startup (for Gunicorn)"""
     create_hotel_excel_file_if_not_exists()
     create_room_excel_file_if_not_exists()
     create_wishlist_excel_file_if_not_exists()
     
-    print("Starting Hotel Booking Backend Server...")
-    print(f"Hotel Excel file: {os.path.abspath(HOTEL_EXCEL_FILE_PATH)}")
-    print(f"Room Excel file: {os.path.abspath(ROOM_EXCEL_FILE_PATH)}")
-    print(f"Wishlist Excel file: {os.path.abspath(WISHLIST_EXCEL_FILE_PATH)}")
-    print("\nAvailable endpoints:")
-    print("  POST /hotel/add-hotel - Add hotel details")
-    print("  POST /hotelRoom/add - Add room details")
-    print("  GET /hotels - Get all hotels")
-    print("  GET /rooms - Get all rooms")
-    print("  POST /wishlist/add - Add hotel to wishlist")
-    print("  POST /wishlist/remove - Remove hotel from wishlist")
-    print("  GET /wishlist/<customer_id> - Get customer wishlist")
-    print("  GET /health - Health check")
-    
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    print("✅ Hotel Booking Backend Server Initialized")
+    print(f"📁 Hotel Excel: {os.path.abspath(HOTEL_EXCEL_FILE_PATH)}")
+    print(f"📁 Room Excel: {os.path.abspath(ROOM_EXCEL_FILE_PATH)}")
+    print(f"📁 Wishlist Excel: {os.path.abspath(WISHLIST_EXCEL_FILE_PATH)}")
+    print("\n🌐 Available API Endpoints:")
+    print("  POST /hotel/add-hotel")
+    print("  POST /hotelRoom/add")
+    print("  GET /hotels")
+    print("  GET /rooms")
+    print("  POST /wishlist/add")
+    print("  POST /wishlist/remove")
+    print("  GET /wishlist/<customer_id>")
+    print("  GET /health")
+    print("  POST /api/telr/create-order")
+    print("  POST /api/telr/check-status")
+    print("  POST /api/telr/webhook")
+
+# Initialize on import (Gunicorn will call this)
+init_app()
+
+if __name__ == '__main__':
+    # Development mode only - use Gunicorn for production
+    print("\n⚠️  DEVELOPMENT MODE - Not for production!")
+    print("For production, use: gunicorn -c gunicorn.conf.py app:app\n")
+    app.run(debug=True, host='127.0.0.1', port=5001)

@@ -160,13 +160,6 @@ const SiteHeader = ({ onNavigate }) => {
                       <UserPlus className="h-5 w-5 text-muted-foreground" />
                       <span className="font-medium">Sign up</span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => handleNavigation("/admin-dashboard")}
-                      className="flex items-center space-x-3 cursor-pointer px-4 py-3 rounded-lg hover:bg-muted/50 transition-colors"
-                    >
-                      <UserPlus className="h-5 w-5 text-muted-foreground" />
-                      <span className="font-medium">Admin Login</span>
-                    </DropdownMenuItem>
                   </div>
                   <DropdownMenuSeparator className="my-2" />
                   <div className="py-2">
