@@ -143,9 +143,9 @@ const Booking = () => {
           email: bookingForm.email || latestBooking?.customerEmail || user?.email || 'guest@example.com',
           forenames: bookingForm.firstName || latestBooking?.customerName?.split(' ')[0] || 'Guest',
           surname: bookingForm.lastName || latestBooking?.customerName?.split(' ').slice(1).join(' ') || 'User',
-          addressLine1: '123 Main Street', // TODO: Collect in booking modal
-          city: 'Dubai',
-          country: 'AE', // ISO country code
+          addressLine1: bookingForm.address || latestBooking?.address || '123 Main Street',
+          city: bookingForm.city || latestBooking?.city || 'Dubai',
+          country: bookingForm.country || 'AE', // ISO country code
           phone: bookingForm.phone || user?.phone || '1234567890'
         },
         returnUrls: {

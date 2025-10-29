@@ -76,7 +76,10 @@ const BookingModal: React.FC<BookingModalProps> = ({
     lastName: '',
     email: '',
     phone: '',
-    title: 'Mr'
+    title: 'Mr',
+    address: '',
+    city: '',
+    country: 'AE'
   });
 
   // Room-based guest details
@@ -454,9 +457,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
     console.log('📦 Booking data:', bookingData);
     
     // Validate booking form data
-    if (!bookingForm.firstName || !bookingForm.lastName || !bookingForm.email || !bookingForm.phone) {
+    if (!bookingForm.firstName || !bookingForm.lastName || !bookingForm.email || !bookingForm.phone || !bookingForm.address || !bookingForm.city) {
       console.log('❌ Validation failed: Missing required fields');
-      setErrorMessage('Please fill in all required fields (First Name, Last Name, Email, Phone).');
+      setErrorMessage('Please fill in all required fields (First Name, Last Name, Email, Phone, Address, City).');
       return;
     }
 
@@ -906,11 +909,49 @@ const BookingModal: React.FC<BookingModalProps> = ({
               <Input
                 id="booking-phone"
                 type="tel"
-                placeholder="Enter phone number"
+                placeholder="Enter phone number (e.g., 971501234567)"
                 value={bookingForm.phone}
                 onChange={(e) => setBookingForm({...bookingForm, phone: e.target.value})}
                 required
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="booking-address">Address *</Label>
+              <Input
+                id="booking-address"
+                placeholder="Enter street address"
+                value={bookingForm.address}
+                onChange={(e) => setBookingForm({...bookingForm, address: e.target.value})}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="booking-city">City *</Label>
+              <Input
+                id="booking-city"
+                placeholder="Enter city"
+                value={bookingForm.city}
+                onChange={(e) => setBookingForm({...bookingForm, city: e.target.value})}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="booking-country">Country *</Label>
+              <Select value={bookingForm.country} onValueChange={(value) => setBookingForm({...bookingForm, country: value})}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select country" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="AE">United Arab Emirates</SelectItem>
+                  <SelectItem value="SA">Saudi Arabia</SelectItem>
+                  <SelectItem value="IN">India</SelectItem>
+                  <SelectItem value="US">United States</SelectItem>
+                  <SelectItem value="GB">United Kingdom</SelectItem>
+                  <SelectItem value="PK">Pakistan</SelectItem>
+                  <SelectItem value="BD">Bangladesh</SelectItem>
+                  <SelectItem value="EG">Egypt</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Room-based Guest Details */}
