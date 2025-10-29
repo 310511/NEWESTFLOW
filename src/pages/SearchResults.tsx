@@ -45,6 +45,12 @@ const SearchResults = () => {
   const checkInRaw = searchParams.get("checkIn") || "";
   const checkOutRaw = searchParams.get("checkOut") || "";
   
+  // Get user preferences from URL parameters (defaults to AE and AED)
+  const nationality = searchParams.get("nationality") || APP_CONFIG.DEFAULT_GUEST_NATIONALITY;
+  const currency = searchParams.get("currency") || APP_CONFIG.DEFAULT_CURRENCY;
+  
+  console.log("🌍 Search preferences:", { nationality, currency });
+  
   // Parse children ages
   const childrenAges = childrenAgesParam 
     ? childrenAgesParam.split(",").map(age => parseInt(age))
@@ -412,12 +418,17 @@ const SearchResults = () => {
             CheckOut: checkOut,
             CityCode: cityCode, // Use city code instead of specific hotel codes
             HotelCodes: hotelCodes, // Fallback to specific hotel codes
-            GuestNationality: APP_CONFIG.DEFAULT_GUEST_NATIONALITY,
-            PreferredCurrencyCode: APP_CONFIG.DEFAULT_CURRENCY,
+            GuestNationality: nationality, // Use user-selected nationality
+            PreferredCurrencyCode: currency, // Use user-selected currency
             PaxRooms: paxRooms,
             IsDetailResponse: true,
             ResponseTime: APP_CONFIG.DEFAULT_RESPONSE_TIME,
           };
+          
+          console.log("🔍 Searching with preferences:", { 
+            nationality: searchParams.GuestNationality, 
+            currency: searchParams.PreferredCurrencyCode 
+          });
 
           console.log(
             "🔍 Trying city-based search first with cityCode:",

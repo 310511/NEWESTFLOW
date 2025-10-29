@@ -25,6 +25,21 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   getCountryList,
   getCityList,
 } from '@/services/hotelCodeApi';
@@ -62,6 +77,11 @@ const MobileSearchBar: React.FC<MobileSearchBarProps> = ({ className = "" }) => 
     children: 0,
     rooms: 1
   });
+
+  // Preferences Dialog State
+  const [showPreferencesDialog, setShowPreferencesDialog] = useState(false);
+  const [nationality, setNationality] = useState('AE');
+  const [currency, setCurrency] = useState('AED');
 
   // Room-by-room guest configuration
   const [roomGuests, setRoomGuests] = useState<RoomGuests[]>([
@@ -137,6 +157,11 @@ const MobileSearchBar: React.FC<MobileSearchBarProps> = ({ className = "" }) => 
   };
 
   const handleSearch = () => {
+    // Show preferences dialog before searching
+    setShowPreferencesDialog(true);
+  };
+
+  const performSearch = () => {
     // Calculate totals
     const totalAdults = roomGuests.reduce((sum, room) => sum + room.adults, 0);
     const totalChildren = roomGuests.reduce((sum, room) => sum + room.children, 0);
@@ -151,11 +176,15 @@ const MobileSearchBar: React.FC<MobileSearchBarProps> = ({ className = "" }) => 
       childrenAges: allChildrenAges.join(','),
       roomGuests: JSON.stringify(roomGuests),
       checkIn: searchData.checkIn || new Date().toISOString().split('T')[0],
-      checkOut: searchData.checkOut || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      checkOut: searchData.checkOut || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      nationality: nationality || 'AE',
+      currency: currency || 'AED'
     });
 
+    console.log('🔍 Searching with preferences:', { nationality, currency });
     navigate(`/search?${params.toString()}`);
     setIsOpen(false);
+    setShowPreferencesDialog(false);
   };
 
   // Load countries when destination field is focused
@@ -595,6 +624,112 @@ const MobileSearchBar: React.FC<MobileSearchBarProps> = ({ className = "" }) => 
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Preferences Dialog */}
+      <Dialog open={showPreferencesDialog} onOpenChange={setShowPreferencesDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold">Search Preferences</DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              Select your nationality and preferred currency for hotel search (optional)
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6 py-4">
+            {/* Nationality Selection */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium text-gray-700">
+                Nationality
+              </Label>
+              <Select value={nationality} onValueChange={setNationality}>
+                <SelectTrigger className="w-full h-12">
+                  <SelectValue placeholder="Select nationality" />
+                </SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  <SelectItem value="AE">🇦🇪 United Arab Emirates (AE)</SelectItem>
+                  <SelectItem value="SA">🇸🇦 Saudi Arabia (SA)</SelectItem>
+                  <SelectItem value="US">🇺🇸 United States (US)</SelectItem>
+                  <SelectItem value="GB">🇬🇧 United Kingdom (GB)</SelectItem>
+                  <SelectItem value="IN">🇮🇳 India (IN)</SelectItem>
+                  <SelectItem value="PK">🇵🇰 Pakistan (PK)</SelectItem>
+                  <SelectItem value="BD">🇧🇩 Bangladesh (BD)</SelectItem>
+                  <SelectItem value="EG">🇪🇬 Egypt (EG)</SelectItem>
+                  <SelectItem value="JO">🇯🇴 Jordan (JO)</SelectItem>
+                  <SelectItem value="KW">🇰🇼 Kuwait (KW)</SelectItem>
+                  <SelectItem value="OM">🇴🇲 Oman (OM)</SelectItem>
+                  <SelectItem value="QA">🇶🇦 Qatar (QA)</SelectItem>
+                  <SelectItem value="BH">🇧🇭 Bahrain (BH)</SelectItem>
+                  <SelectItem value="CA">🇨🇦 Canada (CA)</SelectItem>
+                  <SelectItem value="AU">🇦🇺 Australia (AU)</SelectItem>
+                  <SelectItem value="DE">🇩🇪 Germany (DE)</SelectItem>
+                  <SelectItem value="FR">🇫🇷 France (FR)</SelectItem>
+                  <SelectItem value="IT">🇮🇹 Italy (IT)</SelectItem>
+                  <SelectItem value="ES">🇪🇸 Spain (ES)</SelectItem>
+                  <SelectItem value="CN">🇨🇳 China (CN)</SelectItem>
+                  <SelectItem value="JP">🇯🇵 Japan (JP)</SelectItem>
+                  <SelectItem value="KR">🇰🇷 South Korea (KR)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Default: UAE (AE) if not selected
+              </p>
+            </div>
+
+            {/* Currency Selection */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium text-gray-700">
+                Preferred Currency
+              </Label>
+              <Select value={currency} onValueChange={setCurrency}>
+                <SelectTrigger className="w-full h-12">
+                  <SelectValue placeholder="Select currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="AED">🇦🇪 AED - UAE Dirham</SelectItem>
+                  <SelectItem value="SAR">🇸🇦 SAR - Saudi Riyal</SelectItem>
+                  <SelectItem value="USD">🇺🇸 USD - US Dollar</SelectItem>
+                  <SelectItem value="EUR">🇪🇺 EUR - Euro</SelectItem>
+                  <SelectItem value="GBP">🇬🇧 GBP - British Pound</SelectItem>
+                  <SelectItem value="INR">🇮🇳 INR - Indian Rupee</SelectItem>
+                  <SelectItem value="PKR">🇵🇰 PKR - Pakistani Rupee</SelectItem>
+                  <SelectItem value="BDT">🇧🇩 BDT - Bangladeshi Taka</SelectItem>
+                  <SelectItem value="EGP">🇪🇬 EGP - Egyptian Pound</SelectItem>
+                  <SelectItem value="JPY">🇯🇵 JPY - Japanese Yen</SelectItem>
+                  <SelectItem value="CNY">🇨🇳 CNY - Chinese Yuan</SelectItem>
+                  <SelectItem value="AUD">🇦🇺 AUD - Australian Dollar</SelectItem>
+                  <SelectItem value="CAD">🇨🇦 CAD - Canadian Dollar</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Default: AED if not selected. Note: Payment will be in AED only.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="flex gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                // Skip preferences - use defaults
+                setNationality('AE');
+                setCurrency('AED');
+                setShowPreferencesDialog(false);
+                performSearch();
+              }}
+              className="flex-1 sm:flex-none"
+            >
+              Skip
+            </Button>
+            <Button
+              onClick={performSearch}
+              className="flex-1 sm:flex-none bg-primary hover:bg-primary/90"
+            >
+              <Search className="h-4 w-4 mr-2" />
+              Search Now
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
