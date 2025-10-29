@@ -39,6 +39,7 @@ import { storeHotelAndRoom } from "@/services/hotelStorageApi";
 import { addToWishlist, isHotelInWishlist, removeFromWishlist } from "@/services/wishlistApi";
 import { useAuth } from "@/hooks/useAuth";
 import { hotels as localHotels } from "@/data/hotels";
+import { getCurrencySymbol, convertHotelPrices } from "@/services/currencyConverter";
 
 const HotelDetails = () => {
   const { id } = useParams();
@@ -1147,7 +1148,7 @@ const HotelDetails = () => {
                           </div>
                           <div className="text-right">
                             <div className="text-lg font-bold text-primary">
-                              {hotelDetails.Currency || 'USD'} {selectedRoom.TotalFare}
+                              {getCurrencySymbol(hotelDetails.Currency || 'USD')} {typeof selectedRoom.TotalFare === 'number' ? selectedRoom.TotalFare.toFixed(2) : parseFloat(selectedRoom.TotalFare).toFixed(2)}
                             </div>
                             <div className="text-sm text-muted-foreground">total</div>
                           </div>

@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Loader from "@/components/ui/Loader";
 import { getHotelRoomDetails } from "@/services/hotelApi";
+import { useSearchParams } from "react-router-dom";
+import { convertRoomPrices, getCurrencySymbol } from "@/services/currencyConverter";
 import {
   Bed,
   Wifi,
@@ -62,6 +64,10 @@ const HotelRoomDetails: React.FC<HotelRoomDetailsProps> = ({ bookingCode, onClos
   const [hotelData, setHotelData] = useState<HotelRoomResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  
+  // Get preferred currency from URL
+  const preferredCurrency = searchParams.get("currency") || "AED";
 
   useEffect(() => {
     if (bookingCode) {
@@ -77,7 +83,26 @@ const HotelRoomDetails: React.FC<HotelRoomDetailsProps> = ({ bookingCode, onClos
       const response = await getHotelRoomDetails(bookingCode);
 
       if (response && response.HotelResult) {
-        setHotelData(response.HotelResult);
+        // Convert room prices from USD to preferred currency
+        const hotelResult = response.HotelResult;
+        const sourceCurrency = hotelResult.Currency || "USD";
+        
+        if (sourceCurrency === "USD" && preferredCurrency !== "USD") {
+          console.log(`💱 Converting room prices from ${sourceCurrency} to ${preferredCurrency}`);
+          
+          // Convert each room's prices
+          const convertedRooms = hotelResult.Rooms.map((room: any) => 
+            convertRoomPrices(room, preferredCurrency)
+          );
+          
+          setHotelData({
+            ...hotelResult,
+            Currency: preferredCurrency,
+            Rooms: convertedRooms
+          });
+        } else {
+          setHotelData(hotelResult);
+        }
       } else {
         setError("No room details found");
       }
@@ -191,11 +216,11 @@ const HotelRoomDetails: React.FC<HotelRoomDetailsProps> = ({ bookingCode, onClos
                     </div>
                     <div className="text-right ml-4">
                       <div className="text-xl font-bold text-primary">
-                        {hotelData.Currency} {room.TotalFare}
+                        {getCurrencySymbol(hotelData.Currency)} {typeof room.TotalFare === 'number' ? room.TotalFare.toFixed(2) : parseFloat(room.TotalFare).toFixed(2)}
                       </div>
-                      {room.TotalTax !== "0" && (
+                      {room.TotalTax !== "0" && parseFloat(room.TotalTax) > 0 && (
                         <p className="text-sm text-muted-foreground">
-                          Tax: {hotelData.Currency} {room.TotalTax}
+                          Tax: {getCurrencySymbol(hotelData.Currency)} {typeof room.TotalTax === 'number' ? room.TotalTax.toFixed(2) : parseFloat(room.TotalTax).toFixed(2)}
                         </p>
                       )}
                       <div className="mt-2">
