@@ -27,7 +27,7 @@ import {
   getAllCities,
 } from "@/services/hotelCodeApi";
 import { APP_CONFIG, getCurrentDate, getDateFromNow } from "@/config/constants";
-import { hotels as localHotels } from "@/data/hotels";
+import { convertHotelPrices, logConversion } from "@/services/currencyConverter";
 
 const SearchResults = () => {
   console.log("🚀 SearchResults component rendering...");
@@ -122,7 +122,6 @@ const SearchResults = () => {
   const [hoveredHotel, setHoveredHotel] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
-  const [useFallbackHotels, setUseFallbackHotels] = useState(false);
 
   const itemsPerPage = viewMode === "map" ? 15 : 20;
 
@@ -288,36 +287,7 @@ const SearchResults = () => {
             console.log("   Country Code:", citySearchResult.country_code);
           } catch (error) {
             console.log("❌ City not found via custom API:", cityName);
-            console.log("🔄 Using fallback local hotels");
-            setUseFallbackHotels(true);
-            
-            // Transform local hotels to match API structure
-            const transformedHotels = localHotels.map(hotel => ({
-              HotelCode: hotel.id,
-              HotelName: hotel.name,
-              HotelRating: hotel.rating,
-              Address: hotel.location,
-              CityName: hotel.location.split(',')[0] || hotel.location,
-              CountryName: "Saudi Arabia",
-              Price: hotel.price,
-              Currency: "USD",
-              FrontImage: hotel.images[0],
-              Images: hotel.images,
-              StarRating: hotel.rating,
-              Latitude: hotel.coordinates?.lat || 24.7136,
-              Longitude: hotel.coordinates?.lng || 46.6753,
-              Amenities: hotel.amenities,
-              _isLocalData: true,
-              // Add rooms structure
-              Rooms: [{
-                Name: "Standard Room",
-                TotalFare: hotel.price,
-                RoomIndex: 1,
-                Currency: "USD"
-              }]
-            }));
-            
-            setHotels(transformedHotels as any);
+            console.error("❌ City search error:", error);
             setIsSearching(false);
             return;
           }
@@ -437,6 +407,21 @@ const SearchResults = () => {
 
           const searchResult = await search(searchParams);
           console.log("🔍 City-based search result:", searchResult);
+          
+          // Convert prices from USD to selected currency
+          if (searchResult && searchResult.length > 0 && currency !== 'USD') {
+            console.log(`💱 Converting hotel prices from USD to ${currency}`);
+            const convertedHotels = searchResult.map(hotel => {
+              const converted = convertHotelPrices(hotel, currency);
+              if (hotel.Price) {
+                logConversion(parseFloat(hotel.Price.toString()), currency);
+              }
+              return converted;
+            });
+            setHotels(convertedHotels);
+            console.log("✅ Prices converted to", currency);
+          }
+          
           console.log("✅ Step 3 complete - Search finished");
           console.log("🔍 Final search result:", searchResult);
           console.log("🔍 Hotels state after search:", hotels);
@@ -456,37 +441,6 @@ const SearchResults = () => {
           }
         } catch (error) {
           console.error("❌ Search failed:", error);
-          console.log("🔄 Using fallback local hotels due to error");
-          setUseFallbackHotels(true);
-          
-          // Transform local hotels to match API structure
-          const transformedHotels = localHotels.map(hotel => ({
-            HotelCode: hotel.id,
-            HotelName: hotel.name,
-            HotelRating: hotel.rating,
-            Address: hotel.location,
-            CityName: hotel.location.split(',')[0] || hotel.location,
-            CountryName: "Saudi Arabia",
-            Price: hotel.price,
-            Currency: "USD",
-            FrontImage: hotel.images[0],
-            Images: hotel.images,
-            StarRating: hotel.rating,
-            Latitude: hotel.coordinates?.lat || 24.7136,
-            Longitude: hotel.coordinates?.lng || 46.6753,
-            Amenities: hotel.amenities,
-            _isLocalData: true,
-            // Add rooms structure
-            Rooms: [{
-              Name: "Standard Room",
-              TotalFare: hotel.price,
-              RoomIndex: 1,
-              Currency: "USD"
-            }]
-          }));
-          
-          setHotels(transformedHotels as any);
-        } finally {
           setIsSearching(false);
         }
 
@@ -500,42 +454,11 @@ const SearchResults = () => {
       performSearch().catch((error) => {
         console.error("❌ Error in hotel search:", error);
         setIsSearching(false);
-        // Use fallback hotels on error
-        console.log("🔄 Using fallback local hotels due to search error");
-        setUseFallbackHotels(true);
       });
     } else {
-      // No valid search parameters, use fallback hotels
-      console.log("ℹ️ No valid search parameters, using fallback local hotels");
-      setUseFallbackHotels(true);
-      
-      // Transform local hotels to match API structure
-      const transformedHotels = localHotels.map(hotel => ({
-        HotelCode: hotel.id,
-        HotelName: hotel.name,
-        HotelRating: hotel.rating,
-        Address: hotel.location,
-        CityName: hotel.location.split(',')[0] || hotel.location,
-        CountryName: "Saudi Arabia",
-        Price: hotel.price,
-        Currency: "USD",
-        FrontImage: hotel.images[0],
-        Images: hotel.images,
-        StarRating: hotel.rating,
-        Latitude: hotel.coordinates?.lat || 24.7136,
-        Longitude: hotel.coordinates?.lng || 46.6753,
-        Amenities: hotel.amenities,
-        _isLocalData: true,
-        // Add rooms structure
-        Rooms: [{
-          Name: "Standard Room",
-          TotalFare: hotel.price,
-          RoomIndex: 1,
-          Currency: "USD"
-        }]
-      }));
-      
-      setHotels(transformedHotels as any);
+      // No valid search parameters
+      console.log("ℹ️ No valid search parameters provided");
+      setIsSearching(false);
     }
   }, [checkIn, checkOut, destination, guests, search, setHotels]);
 
@@ -815,10 +738,7 @@ const SearchResults = () => {
                   {destination || "Featured Hotels"}
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  {useFallbackHotels 
-                    ? "Use search to find available hotels with specific dates"
-                    : `${checkIn} - ${checkOut} • ${guests} guests`
-                  }
+                  {checkIn && checkOut ? `${checkIn} - ${checkOut} • ${guests} guests` : "Search for available hotels"}
                 </p>
               </div>
             </div>
@@ -1151,23 +1071,6 @@ const SearchResults = () => {
                     </div>
                   </div>
                 )}
-
-              {/* Fallback Hotels Notice */}
-              {useFallbackHotels && filteredHotels && filteredHotels.length > 0 && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5" />
-                    <div>
-                      <h4 className="font-semibold text-blue-900 mb-1">
-                        Showing Featured Properties
-                      </h4>
-                      <p className="text-sm text-blue-700">
-                        For live availability and real-time pricing, please use the search bar above to specify your dates, destination, and guest details.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Hotels Grid/List - Show if we have hotels */}
               {filteredHotels && filteredHotels.length > 0 && (
