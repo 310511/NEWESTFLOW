@@ -794,10 +794,22 @@ const HotelDetails = () => {
           // Don't fail the booking if storage fails, just log it
         }
 
+        // Convert prebook response prices from USD to preferred currency
+        const currency = urlSearchParams.get("currency") || "AED";
+        let convertedPrebookResponse = prebookResponse;
+        
+        if (prebookResponse.HotelResult && prebookResponse.HotelResult.Currency === "USD" && currency !== "USD") {
+          console.log(`💱 Converting prebook response prices from USD to ${currency}`);
+          convertedPrebookResponse = {
+            ...prebookResponse,
+            HotelResult: convertHotelPrices(prebookResponse.HotelResult, currency)
+          };
+        }
+
         // Navigate to booking page with hotel code and prebook data
         navigate(`/booking/${hotelDetails.HotelCode}`, {
           state: {
-            prebookData: prebookResponse,
+            prebookData: convertedPrebookResponse,
             bookingCode: bookingCode,
             hotelDetails: hotelDetails,
             checkIn: checkIn,

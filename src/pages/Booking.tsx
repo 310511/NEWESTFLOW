@@ -10,6 +10,7 @@ import BookingModal from "@/components/BookingModal";
 import CancelModal from "@/components/CancelModal";
 import { useAuth } from '@/hooks/useAuth';
 import { createTelrOrder } from '@/services/telrPaymentApi';
+import { getCurrencySymbol } from '@/services/currencyConverter';
 
 const Booking = () => {
   const { id } = useParams();
@@ -466,7 +467,7 @@ const Booking = () => {
                   <div className="flex justify-between items-center gap-2">
                     <span className="text-muted-foreground text-sm sm:text-base font-medium">Total Amount</span>
                     <span className="font-bold text-base sm:text-lg text-primary">
-                      {prebookData.HotelResult?.Currency} {prebookData.HotelResult?.Rooms?.TotalFare || "N/A"}
+                      {getCurrencySymbol(prebookData.HotelResult?.Currency || 'AED')} {typeof prebookData.HotelResult?.Rooms?.TotalFare === 'number' ? prebookData.HotelResult?.Rooms?.TotalFare.toFixed(2) : parseFloat(prebookData.HotelResult?.Rooms?.TotalFare || 0).toFixed(2)}
                     </span>
                   </div>
                   
