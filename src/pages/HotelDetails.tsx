@@ -1199,7 +1199,7 @@ const HotelDetails = () => {
                           </div>
                           <div className="text-right">
                             <div className="text-lg font-bold text-primary">
-                              {getCurrencySymbol(hotelDetails.Currency || 'USD')} {typeof selectedRoom.TotalFare === 'number' ? selectedRoom.TotalFare.toFixed(2) : parseFloat(selectedRoom.TotalFare).toFixed(2)}
+                              {getCurrencySymbol(selectedRoom.Currency || hotelDetails.Currency || 'AED')} {typeof selectedRoom.TotalFare === 'number' ? selectedRoom.TotalFare.toFixed(2) : parseFloat(selectedRoom.TotalFare).toFixed(2)}
                             </div>
                             <div className="text-sm text-muted-foreground">total</div>
                           </div>
