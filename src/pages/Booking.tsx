@@ -10,7 +10,7 @@ import BookingModal from "@/components/BookingModal";
 import CancelModal from "@/components/CancelModal";
 import { useAuth } from '@/hooks/useAuth';
 import { createTelrOrder } from '@/services/telrPaymentApi';
-import { getCurrencySymbol } from '@/services/currencyConverter';
+import { getCurrencySymbol, convertCurrency, EXCHANGE_RATES } from '@/services/currencyConverter';
 
 const Booking = () => {
   const { id } = useParams();
@@ -372,6 +372,29 @@ const Booking = () => {
                                 key.toLowerCase().includes('penalty') ||
                                 key.toLowerCase().includes('amount')
                               );
+                              
+                              // Convert charge amounts from USD to preferred currency
+                              if (isCharge && !isEmpty && typeof value === 'number' && prebookData.HotelResult?.Currency) {
+                                const currency = prebookData.HotelResult.Currency;
+                                if (currency !== 'USD') {
+                                  const convertedAmount = convertCurrency(value, currency);
+                                  formattedValue = `${getCurrencySymbol(currency)} ${convertedAmount.toFixed(2)}`;
+                                } else {
+                                  formattedValue = `${getCurrencySymbol('USD')} ${value.toFixed(2)}`;
+                                }
+                              } else if (isCharge && !isEmpty && typeof value === 'string') {
+                                // Try to parse string as number
+                                const numValue = parseFloat(value);
+                                if (!isNaN(numValue) && prebookData.HotelResult?.Currency) {
+                                  const currency = prebookData.HotelResult.Currency;
+                                  if (currency !== 'USD') {
+                                    const convertedAmount = convertCurrency(numValue, currency);
+                                    formattedValue = `${getCurrencySymbol(currency)} ${convertedAmount.toFixed(2)}`;
+                                  } else {
+                                    formattedValue = `${getCurrencySymbol('USD')} ${numValue.toFixed(2)}`;
+                                  }
+                                }
+                              }
                               
                               console.log(`${isEmpty ? '⚠️' : '✅'} ${isEmpty ? 'Empty' : 'Displaying'} field: ${key} = ${formattedValue}`);
                               
