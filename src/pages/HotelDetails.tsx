@@ -138,12 +138,17 @@ const HotelDetails = () => {
       
       // Check hotel availability for new dates and guests
       console.log('🔍 Checking hotel availability for new parameters...');
+      
+      // Get nationality and currency from URL params
+      const nationality = urlSearchParams.get("nationality") || APP_CONFIG.DEFAULT_GUEST_NATIONALITY;
+      const currency = urlSearchParams.get("currency") || APP_CONFIG.DEFAULT_CURRENCY;
+      
       const apiSearchParams = {
         CheckIn: params.checkIn,
         CheckOut: params.checkOut,
         HotelCodes: id,
-        GuestNationality: APP_CONFIG.DEFAULT_GUEST_NATIONALITY,
-        PreferredCurrencyCode: APP_CONFIG.DEFAULT_CURRENCY,
+        GuestNationality: nationality,
+        PreferredCurrencyCode: currency,
         PaxRooms: paxRooms,
         IsDetailResponse: true,
         ResponseTime: APP_CONFIG.DEFAULT_RESPONSE_TIME
@@ -156,6 +161,12 @@ const HotelDetails = () => {
         )
       ]);
       console.log('🔍 Availability check response:', searchResponse);
+      
+      // Convert prices if response is in USD and preferred currency is different
+      if (searchResponse?.HotelResult && searchResponse.HotelResult.Currency === "USD" && currency !== "USD") {
+        console.log(`💱 Converting search response prices from USD to ${currency}`);
+        searchResponse.HotelResult = convertHotelPrices(searchResponse.HotelResult, currency);
+      }
       
       // Check if hotel is available
       if (searchResponse?.Status?.Code === '204' || searchResponse?.Status?.Code === 204) {
@@ -302,8 +313,19 @@ const HotelDetails = () => {
    const fetchHotelDetails = async (hotelCode: string) => {
     setIsLoading(true);
     try {
+      // Get preferred currency from URL
+      const currency = urlSearchParams.get("currency") || "AED";
+      
       const response = await getHotelDetails(hotelCode);
-      setHotelDetails(response.HotelDetails);
+      let hotelDetailsData = response.HotelDetails;
+      
+      // Convert prices from USD to preferred currency
+      if (hotelDetailsData && hotelDetailsData.Currency === "USD" && currency !== "USD") {
+        console.log(`💱 Converting hotel details prices from USD to ${currency}`);
+        hotelDetailsData = convertHotelPrices(hotelDetailsData, currency);
+      }
+      
+      setHotelDetails(hotelDetailsData);
     } catch (error) {
       console.error("Error fetching hotel details from API:", error);
       
@@ -497,12 +519,16 @@ const HotelDetails = () => {
         console.log('✅ Using distributed guests across rooms:', paxRooms);
       }
       
+      // Get nationality and currency from URL params
+      const nationality = urlSearchParams.get("nationality") || APP_CONFIG.DEFAULT_GUEST_NATIONALITY;
+      const currency = urlSearchParams.get("currency") || APP_CONFIG.DEFAULT_CURRENCY;
+      
       const apiSearchParams = {
         CheckIn: parsedCheckIn,
         CheckOut: parsedCheckOut,
         HotelCodes: id,
-        GuestNationality: APP_CONFIG.DEFAULT_GUEST_NATIONALITY,
-        PreferredCurrencyCode: APP_CONFIG.DEFAULT_CURRENCY,
+        GuestNationality: nationality,
+        PreferredCurrencyCode: currency,
         PaxRooms: paxRooms,
         IsDetailResponse: true,
         ResponseTime: APP_CONFIG.DEFAULT_RESPONSE_TIME
@@ -532,6 +558,19 @@ const HotelDetails = () => {
         
         console.log('🔍 Search response:', searchResponse);
         console.log('🔍 HotelResult:', searchResponse?.HotelResult);
+        
+        // Convert prices if response is in USD and preferred currency is different
+        if (searchResponse?.HotelResult && currency !== "USD") {
+          const hotelResult = searchResponse.HotelResult;
+          if (Array.isArray(hotelResult)) {
+            searchResponse.HotelResult = hotelResult.map((hotel: any) => 
+              hotel.Currency === "USD" ? convertHotelPrices(hotel, currency) : hotel
+            );
+          } else if (hotelResult.Currency === "USD") {
+            searchResponse.HotelResult = convertHotelPrices(hotelResult, currency);
+          }
+          console.log(`💱 Converted booking code search prices to ${currency}`);
+        }
         
         // Check if hotel is available
         if (searchResponse?.Status?.Code === '204' || searchResponse?.Status?.Code === 204) {
