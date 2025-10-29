@@ -4,6 +4,7 @@ import { Heart, Star } from 'lucide-react';
 import { Hotel } from '@/data/hotels';
 import { HotelResult } from '@/services/hotelApi';
 import { Button } from '@/components/ui/button';
+import { getCurrencySymbol } from '@/services/currencyConverter';
 
 interface AirbnbHotelCardProps {
   hotel: Hotel | HotelResult;
@@ -61,6 +62,7 @@ const AirbnbHotelCard = ({ hotel, onHover, isSelected, variant = 'list' }: Airbn
       console.log('🔍 Final extracted price:', finalPrice);
       return finalPrice;
     })() : hotel.price,
+    currency: isApiHotel(hotel) ? hotel.Currency || 'USD' : 'USD',
     images: isApiHotel(hotel) ? [hotel.FrontImage] : hotel.images,
     originalPrice: isApiHotel(hotel) ? undefined : hotel.originalPrice,
     checkIn: isApiHotel(hotel) ? undefined : hotel.checkIn,
@@ -156,7 +158,9 @@ const AirbnbHotelCard = ({ hotel, onHover, isSelected, variant = 'list' }: Airbn
                   <span className="text-xs font-medium">{normalizedHotel.rating}</span>
                 </div>
                 <div>
-                  <span className="font-semibold text-sm">${normalizedHotel.price}</span>
+                  <span className="font-semibold text-sm">
+                    {getCurrencySymbol(normalizedHotel.currency)} {normalizedHotel.price.toFixed(2)}
+                  </span>
                   <div className="text-xs text-muted-foreground">night</div>
                 </div>
               </div>
@@ -260,11 +264,13 @@ const AirbnbHotelCard = ({ hotel, onHover, isSelected, variant = 'list' }: Airbn
         )}
 
         <div className="flex items-baseline">
-          <span className="font-semibold text-foreground">${normalizedHotel.price}</span>
+          <span className="font-semibold text-foreground">
+            {getCurrencySymbol(normalizedHotel.currency)} {normalizedHotel.price.toFixed(2)}
+          </span>
           <span className="text-muted-foreground text-sm ml-1">night</span>
           {normalizedHotel.originalPrice && (
             <span className="text-muted-foreground text-sm line-through ml-2">
-              ${normalizedHotel.originalPrice}
+              {getCurrencySymbol(normalizedHotel.currency)} {normalizedHotel.originalPrice.toFixed(2)}
             </span>
           )}
         </div>
